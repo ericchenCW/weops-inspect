@@ -87,6 +87,24 @@ ReplicationReport►CheckReplication    ┘                ↓ 模板按 Status 
 > 详细判定规则（每组件哪些字段进哪档、签名计算与通知决策状态机）见
 > [docs/checks.md](docs/checks.md)。
 
+Warn 阈值速查（触发告警邮件，env 覆盖）：
+
+| 环境变量                                          | 默认值 | 含义                                                         |
+|---------------------------------------------------|--------|--------------------------------------------------------------|
+| `INSPECT_CPU_THRESHOLD`                           | 95     | host `cpu_usage` 百分比上限                                  |
+| `INSPECT_MEM_THRESHOLD`                           | 95     | host `mem_usage` 百分比上限                                  |
+| `INSPECT_DISK_THRESHOLD`                          | 95     | host `disk_usage` 百分比上限                                 |
+| `INSPECT_INODE_THRESHOLD`                         | 95     | host `inode_usage` 百分比上限                                |
+| `INSPECT_MAX_OPEN_FILES`                          | 65536  | host `max_open_files` 下限（低于即告警）                     |
+| `INSPECT_MYSQL_REPL_LAG_THRESHOLD`                | 60     | MySQL 从库 `Seconds_Behind_Master` 上限（秒）                |
+| `INSPECT_REDIS_REPL_IO_THRESHOLD`                 | 10     | Redis 从库 `master_last_io_seconds_ago` 上限（秒）           |
+| `INSPECT_RABBITMQ_QUEUE_BACKLOG_THRESHOLD`        | 10000  | RabbitMQ 单队列消息堆积上限                                  |
+| `INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST`    | `bk_bknodeman` | 逗号分隔；命中的 vhost 跳过"0 消费者"告警（队列堆积仍生效）。env 设值即完全替换默认 |
+
+> **升级注意（默认阈值变化）**：CPU/Mem/Disk/Inode 默认阈值已由 75% 调整为 95%；
+> `MaxOpenFiles` 由 102400 调整为 65536；`INSPECT_RUN_DAYS` 已下线。需要保留旧行为
+> 的环境必须显式 `export INSPECT_CPU_THRESHOLD=75` 等。
+
 Notice 阈值速查（仅以下 6 项触发 Notice，env 覆盖）：
 
 | 环境变量                                  | 默认值 | 含义                                           |
