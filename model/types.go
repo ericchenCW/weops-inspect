@@ -265,18 +265,27 @@ type RabbitMQQueue struct {
 	Durable      bool   `json:"durable"`
 }
 
+// RabbitMQVHostSummary aggregates queue stats for a single vhost.
+type RabbitMQVHostSummary struct {
+	VHost     string `json:"vhost"`
+	Queues    int    `json:"queues"`
+	Messages  int    `json:"messages"`
+	Consumers int    `json:"consumers"`
+}
+
 // RabbitMQStatus represents the RabbitMQ cluster status.
 type RabbitMQStatus struct {
-	ClusterPartition    bool            `json:"cluster_partition"`
-	Uptime              string          `json:"uptime"`
-	TotalConnections    int             `json:"total_connections"`
-	AbnormalConnections int             `json:"abnormal_connections"`
-	TotalChannels       int             `json:"total_channels"`
-	NodeAlarms          []RabbitMQAlarm `json:"nodes_alarms"`
-	ExceedingQueues     []RabbitMQQueue `json:"queues_exceeding_message_threshold"`
-	NoConsumerQueues    []RabbitMQQueue `json:"queues_with_no_consumers"`
-	Error               string          `json:"error,omitempty"`
-	ErrorClass          string          `json:"error_class,omitempty"`
+	ClusterPartition    bool                   `json:"cluster_partition"`
+	Uptime              string                 `json:"uptime"`
+	TotalConnections    int                    `json:"total_connections"`
+	AbnormalConnections int                    `json:"abnormal_connections"`
+	TotalChannels       int                    `json:"total_channels"`
+	NodeAlarms          []RabbitMQAlarm        `json:"nodes_alarms"`
+	VHostSummary        []RabbitMQVHostSummary `json:"vhost_summary"`
+	ExceedingQueues     []RabbitMQQueue        `json:"queues_exceeding_message_threshold"`
+	NoConsumerQueues    []RabbitMQQueue        `json:"queues_with_no_consumers"`
+	Error               string                 `json:"error,omitempty"`
+	ErrorClass          string                 `json:"error_class,omitempty"`
 }
 
 // CheckStatus represents the status of a rule check.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"weops-inspect/config"
@@ -108,6 +109,7 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 	if queuesJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "queues"); err == nil && queuesJSON != nil {
 		var queues []map[string]interface{}
 		if json.Unmarshal(queuesJSON, &queues) == nil {
+			summaryByVHost := map[string]*model.RabbitMQVHostSummary{}
 			for _, q := range queues {
 				vhost := jsonStr(q["vhost"])
 				name := jsonStr(q["name"])
@@ -116,6 +118,16 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 				}
 				msgs := jsonInt(q["messages"])
 				consumers := jsonInt(q["consumers"])
+
+				agg, ok := summaryByVHost[vhost]
+				if !ok {
+					agg = &model.RabbitMQVHostSummary{VHost: vhost}
+					summaryByVHost[vhost] = agg
+				}
+				agg.Queues++
+				agg.Messages += msgs
+				agg.Consumers += consumers
+
 				queueInfo := model.RabbitMQQueue{
 					VHost:        vhost,
 					Queue:        name,
@@ -131,6 +143,14 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 				if consumers == 0 && msgs > 0 {
 					p.status.NoConsumerQueues = append(p.status.NoConsumerQueues, queueInfo)
 				}
+			}
+			vhosts := make([]string, 0, len(summaryByVHost))
+			for v := range summaryByVHost {
+				vhosts = append(vhosts, v)
+			}
+			sort.Strings(vhosts)
+			for _, v := range vhosts {
+				p.status.VHostSummary = append(p.status.VHostSummary, *summaryByVHost[v])
 			}
 		}
 	}

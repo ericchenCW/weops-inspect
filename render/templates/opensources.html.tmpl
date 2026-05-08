@@ -186,6 +186,20 @@
                 <td>{{.RabbitMQ.TotalChannels}}</td>
             </tr>
         </table>
+        {{if .RabbitMQ.VHostSummary}}
+        <h4 style="margin:12px 0 8px;">VHost 汇总</h4>
+        <table>
+            <tr><th>VHost</th><th>队列数</th><th>消息总数</th><th>消费者总数</th></tr>
+            {{range .RabbitMQ.VHostSummary}}
+            <tr>
+                <td>{{.VHost}}</td>
+                <td>{{.Queues}}</td>
+                <td>{{.Messages}}</td>
+                <td>{{.Consumers}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
         {{if .RabbitMQ.NodeAlarms}}
         <h4 style="margin:12px 0 8px;">节点告警</h4>
         <table>
