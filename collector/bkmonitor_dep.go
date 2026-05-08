@@ -13,17 +13,21 @@ import (
 
 // CollectBKMonitorV3Deps probes bkmonitorv3 dependency endpoints from the
 // inspector host, mirroring bk-install/health_check/deploy_check.py:bkmonitorv3().
-// Returns nil when bkmonitorv3 is not deployed (BK_MONITORV3_IP_COMMA empty).
+// Returns nil when bkmonitorv3 is not deployed (即 BK_MONITORV3_IP_COMMA 与 4 个角色
+// IP 列表全部为空)。
 func CollectBKMonitorV3Deps(cfg *config.Config) []model.DependencyResult {
-	if len(cfg.MonitorV3IPs) == 0 {
+	if len(cfg.MonitorV3IPs) == 0 &&
+		len(cfg.MonitorV3MonitorIPs) == 0 &&
+		len(cfg.MonitorV3InfluxDBProxyIPs) == 0 &&
+		len(cfg.MonitorV3TransferIPs) == 0 &&
+		len(cfg.MonitorV3UnifyQueryIPs) == 0 {
 		return nil
 	}
 
 	dep := cfg.BKMonitorV3
 	results := []model.DependencyResult{
 		probeRedisLogin("redis", dep.RedisHost, dep.RedisPort, dep.RedisPassword),
-		probeMySQLLogin("mysql-paas", dep.PaaSMySQLHost, dep.PaaSMySQLPort, dep.PaaSMySQLUser, dep.PaaSMySQLPassword),
-		probeMySQLLogin("mysql-monitor", dep.MonitorMySQLHost, dep.MonitorMySQLPort, dep.MonitorMySQLUser, dep.MonitorMySQLPassword),
+		probeMySQLLogin("mysql", dep.MySQLHost, dep.MySQLPort, dep.MySQLUser, dep.MySQLPassword),
 		probeRabbitMQ("rabbitmq", dep.RabbitMQHost, dep.RabbitMQPort, dep.RabbitMQUser, dep.RabbitMQPassword, dep.RabbitMQVHost),
 		probeZookeeper("zookeeper", dep.ZKHost, dep.ZKPort),
 		probeES7("es7", dep.ES7Host, dep.ES7RestPort, dep.ES7User, dep.ES7Password),
@@ -125,26 +129,14 @@ func probeZookeeper(item, host, port string) model.DependencyResult {
 	if r, ok := skipIfMissing(item, endpoint, host == "" || port == ""); ok {
 		return r
 	}
+	// 蓝鲸 ZK 默认 4lw whitelist 仅放 `srvr`,`ruok` 被禁。这里只做 TCP 连通性
+	// 校验,能建连即视为可达;Detail 中记下取舍便于运维复核。
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 5*time.Second)
 	if err != nil {
 		return model.DependencyResult{Item: item, Endpoint: endpoint, Status: "unreachable", Detail: err.Error()}
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	if _, err := conn.Write([]byte("ruok")); err != nil {
-		return model.DependencyResult{Item: item, Endpoint: endpoint, Status: "fail", Detail: err.Error()}
-	}
-	buf := make([]byte, 4)
-	n, _ := conn.Read(buf)
-	resp := strings.TrimSpace(string(buf[:n]))
-	if resp == "imok" {
-		return model.DependencyResult{Item: item, Endpoint: endpoint, Status: "ok"}
-	}
-	if resp == "" {
-		// 4lw command may be disabled (zookeeper.4lw.commands.whitelist).
-		return model.DependencyResult{Item: item, Endpoint: endpoint, Status: "fail", Detail: "no ruok response (4lw disabled?)"}
-	}
-	return model.DependencyResult{Item: item, Endpoint: endpoint, Status: "fail", Detail: resp}
+	_ = conn.Close()
+	return model.DependencyResult{Item: item, Endpoint: endpoint, Status: "ok", Detail: "TCP-only probe; 4lw whitelist may exclude ruok"}
 }
 
 func probeES7(item, host, port, user, password string) model.DependencyResult {

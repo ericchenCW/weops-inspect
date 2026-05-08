@@ -3,11 +3,13 @@ package collector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 
 	"weops-inspect/config"
 	"weops-inspect/model"
@@ -16,6 +18,10 @@ import (
 // CollectES collects Elasticsearch cluster health and node metrics.
 // HTTP layer still uses the local `curl` binary by design; the Probe wrapper
 // brings ctx-based timeouts and error classification.
+//
+// 多节点行为:对 cfg.ES7IPs 中每个 IP 并发探测 9200 端口可达性,在 cluster.NodeReachability
+// 中逐条记录;集群级 _cluster/health 与 _cat/nodes 仅从首个可达 IP 拉一次。全部不可达
+// 时 cluster.Error="all nodes unreachable",ErrorClass=ErrNetwork。
 func CollectES(ctx context.Context, cfg *config.Config) []model.ESCluster {
 	if len(cfg.ES7IPs) == 0 {
 		return nil
@@ -24,20 +30,68 @@ func CollectES(ctx context.Context, cfg *config.Config) []model.ESCluster {
 		return []model.ESCluster{{Error: "curl CLI not available", ErrorClass: string(ErrUnknown)}}
 	}
 
-	host := cfg.ES7IPs[0]
 	port := "9200"
-	instance := net.JoinHostPort(host, port)
-	cluster := model.ESCluster{Instance: instance}
-
 	auth := ""
 	if cfg.Creds.ES7Password != "" {
 		auth = fmt.Sprintf("elastic:%s@", cfg.Creds.ES7Password)
 	}
 
-	p := &esProbe{host: host, port: port, auth: auth, target: instance, cluster: &cluster}
+	reach := probeES7Nodes(ctx, cfg.ES7IPs, port)
+
+	var leader string
+	for _, r := range reach {
+		if r.Status == "ok" {
+			leader = r.IP
+			break
+		}
+	}
+
+	cluster := model.ESCluster{NodeReachability: reach}
+
+	if leader == "" {
+		cluster.Instance = net.JoinHostPort(cfg.ES7IPs[0], port)
+		cluster.Error = "all nodes unreachable"
+		cluster.ErrorClass = string(ErrNetwork)
+		return []model.ESCluster{cluster}
+	}
+
+	cluster.Instance = net.JoinHostPort(leader, port)
+	p := &esProbe{host: leader, port: port, auth: auth, target: cluster.Instance, cluster: &cluster}
 	RunProbe(ctx, p)
 
 	return []model.ESCluster{cluster}
+}
+
+// probeES7Nodes 并发对每个 IP 的 9200 做一次 curl GET /,返回与输入顺序一致的可达性列表。
+func probeES7Nodes(ctx context.Context, ips []string, port string) []model.ESNodeReach {
+	out := make([]model.ESNodeReach, len(ips))
+	var wg sync.WaitGroup
+	for i, ip := range ips {
+		wg.Add(1)
+		go func(idx int, ip string) {
+			defer wg.Done()
+			url := fmt.Sprintf("http://%s:%s/", ip, port)
+			_, err := curlGet(ctx, url)
+			if err != nil {
+				out[idx] = model.ESNodeReach{IP: ip, Status: "unreachable", Detail: curlErrDetail(err)}
+				return
+			}
+			out[idx] = model.ESNodeReach{IP: ip, Status: "ok"}
+		}(i, ip)
+	}
+	wg.Wait()
+	return out
+}
+
+func curlErrDetail(err error) string {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if len(ee.Stderr) > 0 {
+			return strings.TrimSpace(string(ee.Stderr))
+		}
+		return fmt.Sprintf("curl exit %d", ee.ExitCode())
+	}
+	return err.Error()
 }
 
 type esProbe struct {

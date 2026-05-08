@@ -65,17 +65,27 @@ var ModuleRegistry = map[string][]SubModule{
 		{Name: "bkiam", ServiceUnit: "bk-iam", ProcessName: "bkiam", Port: 5001, HealthzPath: "/healthz", HealthzType: "http_status"},
 	},
 	"usermgr": {
-		{Name: "usermgr", ServiceUnit: "bk-usermgr", ProcessName: "usermgr", Port: 8009, HealthzPath: "/healthz", HealthzType: "http_status"},
+		// Django + gunicorn 的 /healthz 会 301 → /healthz/,直接打带斜杠的目标 URL 拿 200。
+		{Name: "usermgr", ServiceUnit: "bk-usermgr", ProcessName: "usermgr", Port: 8009, HealthzPath: "/healthz/", HealthzType: "http_status"},
 	},
 	"nodeman": {
 		{Name: "nodeman", ServiceUnit: "bk-nodeman", ProcessName: "nodeman", Port: 10300, HealthzPath: "/", HealthzType: "http_alive"},
 	},
-	"bkmonitorv3": {
+	// bkmonitorv3 拆为 4 个独立 module key,每个 key 只含本角色的 SubModule。
+	// 这样 service.go 流水线在某主机上只会探测该主机实际部署的角色,
+	// 避免跨角色 not-found / unreachable 误报。
+	"bkmonitorv3-monitor": {
 		// monitor 走 supervisord 拉起多个 Python 进程,故 ProcessName 取 supervisord
 		// (worker 数反映 supervisor 自身,子进程不计)。
 		{Name: "monitor", ServiceUnit: "bk-monitor", ProcessName: "supervisord", Port: 10204, HealthzPath: "/", HealthzType: "http_alive"},
+	},
+	"bkmonitorv3-influxdb-proxy": {
 		{Name: "influxdb-proxy", ServiceUnit: "bk-influxdb-proxy", ProcessName: "influxdb-proxy", Port: 10203, HealthzPath: "/", HealthzType: "http_alive"},
+	},
+	"bkmonitorv3-transfer": {
 		{Name: "transfer", ServiceUnit: "bk-transfer", ProcessName: "transfer", Port: 10202, HealthzPath: "/", HealthzType: "http_alive"},
+	},
+	"bkmonitorv3-unify-query": {
 		{Name: "unify-query", ServiceUnit: "bk-unify-query", ProcessName: "unify-query", Port: 10206, HealthzPath: "/", HealthzType: "http_alive"},
 	},
 }

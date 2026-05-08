@@ -20,15 +20,12 @@ type BKMonitorV3DepConfig struct {
 	RedisPort     string
 	RedisPassword string
 
-	MonitorMySQLHost     string
-	MonitorMySQLPort     string
-	MonitorMySQLUser     string
-	MonitorMySQLPassword string
-
-	PaaSMySQLHost     string
-	PaaSMySQLPort     string
-	PaaSMySQLUser     string
-	PaaSMySQLPassword string
+	// 蓝鲸生产环境 PaaS 与 Monitor 共用同一套 MySQL,统一通过 Consul 暴露为
+	// mysql.service.consul:3306。这里只保留单组字段,加载顺序见 Load()。
+	MySQLHost     string
+	MySQLPort     string
+	MySQLUser     string
+	MySQLPassword string
 
 	RabbitMQHost     string
 	RabbitMQPort     string
@@ -86,6 +83,13 @@ type Config struct {
 	UserMgrIPs []string
 	NodeManIPs []string
 	MonitorV3IPs []string
+
+	// bkmonitorv3 子角色独立 IP 列表。生产中各角色常被拆到不同主机部署,这里允许
+	// 按角色分别声明部署主机;空列表回退使用 MonitorV3IPs(由 GetModuleHosts() 处理)。
+	MonitorV3MonitorIPs        []string
+	MonitorV3InfluxDBProxyIPs  []string
+	MonitorV3TransferIPs       []string
+	MonitorV3UnifyQueryIPs     []string
 
 	// Open source component hosts
 	ES7IPs           []string
@@ -173,6 +177,10 @@ func Load(outputDir string) (*Config, error) {
 	c.UserMgrIPs = parseIPList(os.Getenv("BK_USERMGR_IP_COMMA"))
 	c.NodeManIPs = parseIPList(os.Getenv("BK_NODEMAN_IP_COMMA"))
 	c.MonitorV3IPs = parseIPList(os.Getenv("BK_MONITORV3_IP_COMMA"))
+	c.MonitorV3MonitorIPs = parseIPList(os.Getenv("BK_MONITORV3_MONITOR_IP_COMMA"))
+	c.MonitorV3InfluxDBProxyIPs = parseIPList(os.Getenv("BK_MONITORV3_INFLUXDB_PROXY_IP_COMMA"))
+	c.MonitorV3TransferIPs = parseIPList(os.Getenv("BK_MONITORV3_TRANSFER_IP_COMMA"))
+	c.MonitorV3UnifyQueryIPs = parseIPList(os.Getenv("BK_MONITORV3_UNIFY_QUERY_IP_COMMA"))
 
 	// bkmonitorv3 dependency endpoints (used only by the bkmonitorv3 dep probe).
 	c.BKMonitorV3 = BKMonitorV3DepConfig{
@@ -180,15 +188,10 @@ func Load(outputDir string) (*Config, error) {
 		RedisPort:     os.Getenv("BK_MONITOR_REDIS_PORT"),
 		RedisPassword: os.Getenv("BK_MONITOR_REDIS_PASSWORD"),
 
-		MonitorMySQLHost:     os.Getenv("BK_MONITOR_MYSQL_HOST"),
-		MonitorMySQLPort:     os.Getenv("BK_MONITOR_MYSQL_PORT"),
-		MonitorMySQLUser:     os.Getenv("BK_MONITOR_MYSQL_USER"),
-		MonitorMySQLPassword: os.Getenv("BK_MONITOR_MYSQL_PASSWORD"),
-
-		PaaSMySQLHost:     os.Getenv("BK_PAAS_MYSQL_HOST"),
-		PaaSMySQLPort:     os.Getenv("BK_PAAS_MYSQL_PORT"),
-		PaaSMySQLUser:     os.Getenv("BK_PAAS_MYSQL_USER"),
-		PaaSMySQLPassword: os.Getenv("BK_PAAS_MYSQL_PASSWORD"),
+		MySQLHost:     firstNonEmpty(os.Getenv("BK_MONITOR_MYSQL_HOST"), os.Getenv("BK_PAAS_MYSQL_HOST"), "mysql.service.consul"),
+		MySQLPort:     firstNonEmpty(os.Getenv("BK_MONITOR_MYSQL_PORT"), os.Getenv("BK_PAAS_MYSQL_PORT"), "3306"),
+		MySQLUser:     firstNonEmpty(os.Getenv("BK_MONITOR_MYSQL_USER"), os.Getenv("BK_PAAS_MYSQL_USER")),
+		MySQLPassword: firstNonEmpty(os.Getenv("BK_MONITOR_MYSQL_PASSWORD"), os.Getenv("BK_PAAS_MYSQL_PASSWORD")),
 
 		RabbitMQHost:     os.Getenv("BK_MONITOR_RABBITMQ_HOST"),
 		RabbitMQPort:     os.Getenv("BK_MONITOR_RABBITMQ_PORT"),
@@ -326,7 +329,17 @@ func (c *Config) Validate() error {
 }
 
 // GetModuleHosts returns the ordered list of BK modules and their hosts.
+//
+// bkmonitorv3 被拆为 4 个独立角色 module key:每个 key 的 IP 来源优先取角色专属变量
+// (BK_MONITORV3_<ROLE>_IP_COMMA),为空时回退到 BK_MONITORV3_IP_COMMA(MonitorV3IPs),
+// 兼容旧的"四角色同主机"部署。
 func (c *Config) GetModuleHosts() []ModuleHosts {
+	roleIPs := func(role []string) []string {
+		if len(role) > 0 {
+			return role
+		}
+		return c.MonitorV3IPs
+	}
 	return []ModuleHosts{
 		{Module: "paas", IPs: c.PaaSIPs},
 		{Module: "cmdb", IPs: c.CMDBIPs},
@@ -337,7 +350,10 @@ func (c *Config) GetModuleHosts() []ModuleHosts {
 		{Module: "iam", IPs: c.IAMIPs},
 		{Module: "usermgr", IPs: c.UserMgrIPs},
 		{Module: "nodeman", IPs: c.NodeManIPs},
-		{Module: "bkmonitorv3", IPs: c.MonitorV3IPs},
+		{Module: "bkmonitorv3-monitor", IPs: roleIPs(c.MonitorV3MonitorIPs)},
+		{Module: "bkmonitorv3-influxdb-proxy", IPs: roleIPs(c.MonitorV3InfluxDBProxyIPs)},
+		{Module: "bkmonitorv3-transfer", IPs: roleIPs(c.MonitorV3TransferIPs)},
+		{Module: "bkmonitorv3-unify-query", IPs: roleIPs(c.MonitorV3UnifyQueryIPs)},
 	}
 }
 
@@ -352,6 +368,8 @@ func (c *Config) buildAllHosts() []string {
 		c.PaaSIPs, c.CMDBIPs, c.JobIPs, c.GSEIPs,
 		c.APPOIPs, c.APPTIPs, c.IAMIPs, c.UserMgrIPs,
 		c.NodeManIPs, c.MonitorV3IPs,
+		c.MonitorV3MonitorIPs, c.MonitorV3InfluxDBProxyIPs,
+		c.MonitorV3TransferIPs, c.MonitorV3UnifyQueryIPs,
 		c.ES7IPs, c.RabbitMQIPs, c.MySQLIPs, c.MongoDBIPs,
 		c.RedisIPs, c.RedisSentinelIPs,
 	}
@@ -365,6 +383,17 @@ func (c *Config) buildAllHosts() []string {
 		}
 	}
 	return hosts
+}
+
+// firstNonEmpty 按顺序返回首个非空字符串。常用于 env 优先级回退,例如
+// `BK_MONITOR_MYSQL_HOST` → `BK_PAAS_MYSQL_HOST` → 默认值。
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func envOrDefault(key, defaultVal string) string {
