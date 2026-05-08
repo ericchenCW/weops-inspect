@@ -92,7 +92,7 @@
 - [x] 12.2 重写 `services.html.tmpl`：删除 `{{if eq .Status "active"}}...{{end}}` 等所有内联判断，改为 `{{statusClass .RenderStatus}}` / `{{statusClass .HealthzRenderStatus}}` / `{{statusClass .ExitedStatus}}`
 - [x] 12.3 重写 `opensources.html.tmpl`：删除 ES heap/RAM/UnassignedShards、Redis Celery/Monitor、Mongo Health、RabbitMQ AbnormalConnections / 节点告警、MySQL Replication、Redis Role/Link 等所有内联条件着色，改为读 Status 字段
 - [x] 12.4 grep 验证：`grep -RnE "{{if (gt|eq) \." render/templates/` 命中数为 0
-- [ ] 12.5 跑一次完整巡检，对比升级前后 HTML 视觉差异（除新出现的 Notice 红字外应当一致）
+- [x] 12.5 跑一次完整巡检，对比升级前后 HTML 视觉差异（除新出现的 Notice 红字外应当一致）
 
 ## 13. 文档与 CI 守卫
 
@@ -104,5 +104,5 @@
 
 - [x] 14.1 准备一份固定的样本 `weops_inspection.json`（含 RabbitMQ 积压、ES RAM>95、MongoDB Health 异常、空 Service Status 等多种状态）
 - [x] 14.2 跑全链路：collector→checker→render→notify(dryrun)，断言 Summary、HTML 着色、邮件草稿三处 Warn 集合一致
-- [ ] 14.3 在 staging 环境实跑一次（关通知），人工 review HTML 与本次案例（job-analysis 空状态、RabbitMQ 360k）是否被正确归类
-- [ ] 14.4 开启通知，确认升级当次邮件可读（不超过 200 行；超过的话考虑 Warn 项摘要+附件）
+- [x] 14.3 在 staging 环境实跑一次（关通知），人工 review HTML 与本次案例（job-analysis 空状态、RabbitMQ 360k）是否被正确归类
+- [x] 14.4 开启通知，确认升级当次邮件可读（不超过 200 行；超过的话考虑 Warn 项摘要+附件）
