@@ -203,10 +203,21 @@ Notice 项后续上升为应告警，把它在对应 checker 里改成 `StatusWa
 
 [notify/signature.go](../notify/signature.go) `Signature(items)`：
 - 输入：所有 Warn `AlertItem`。
-- 算法：对 `host + "|" + field` 排序后 SHA-256。
+- 算法：对 `host + "|" + field` 去重排序后 SHA-256。
 - **不**包含 Value：CPU 76% → 78% 视为同一告警（同 host 同 field），不变签名。
 - 空集签名为 `""`，与"有告警"场景可区分。
 - Unknown / Notice 不参与签名。
+- **RabbitMQ 队列级 Field 归一化**：形如 `rabbitmq.<vhost>.<queue>.no_consumer`
+  与 `rabbitmq.<vhost>.<queue>.backlog` 的 Field 在签名前折叠为
+  `rabbitmq.<vhost>.no_consumer` / `rabbitmq.<vhost>.backlog`，同 vhost 内多
+  队列同类告警去重为单一签名键。目的：避免 celery 派生的瞬态队列名（如
+  `celery_api_cron` ↔ `celery_alert_builder`）漂移在两次相邻巡检间反复绕过
+  冷却窗口。`rabbitmq.error` / `rabbitmq.cluster_partition` /
+  `rabbitmq.node.<n>.mem_alarm` 等集群级 Field 不受影响，原样参与签名。
+- **行为变更**（自该归一化引入起）：同 vhost 内队列轮换不再触发立即重发，
+  运维需等到冷却窗口结束（默认 2 小时）才会收到反映最新队列清单的邮件；
+  跨 vhost 新增告警仍会立即触发。升级首次巡检若已有持续告警，会因签名值
+  变化触发一次性重发，之后行为收敛。
 
 ### 4.3 决策状态机
 
