@@ -24,7 +24,7 @@
 
 - [x] 4.1 在 `service_registry` 中 `job-gateway` 的 entry 上配置 `HealthzPort: 19876`
 - [x] 4.2 修改 `collector/service.go` 拼 healthz URL 处, 引入 `hzPort := sub.HealthzPort; if hzPort == 0 { hzPort = sub.Port }`, 在 `http_status` / `http_alive` / `json_ok` / `json_up` 各分支中用 `hzPort` 替代 `sub.Port`
-- [ ] 4.3 在测试环境验证 job-gateway 的 healthz 检查项变为 `ok`(不再是 fail)
+- [x] 4.3 在测试环境验证 job-gateway 的 healthz 检查项变为 `ok`(不再是 fail)
 
 ## 5. job-analysis 跳过检查
 
@@ -32,7 +32,7 @@
 - [x] 5.2 修改 `collector/service.go`: 拼命令前根据 `sub.SkipStatusCheck` 跳过 `===SVC_<name>===` 段; 根据 `sub.SkipHealthzCheck` 跳过 healthz curl 段
 - [x] 5.3 修改 `collector/service.go` 解析阶段: skip 的服务对应字段不赋值(或显式置 `""` / `"N/A"`)
 - [x] 5.4 修改 `checker/rules.go` `CheckService`: `sm.Status == ""` 时不输出 status 检查项; healthz 已有 `"N/A"` 路径, 沿用即可
-- [ ] 5.5 在测试环境验证 job-analysis 不出现在巡检报告的 status / healthz 检查中, 其它 job-* 服务正常
+- [x] 5.5 在测试环境验证 job-analysis 不出现在巡检报告的 status / healthz 检查中, 其它 job-* 服务正常
 
 ## 6. RabbitMQ 0 消费者 vhost 黑名单
 
@@ -44,12 +44,12 @@
 
 ## 7. 文档与发布说明
 
-- [ ] 7.1 更新 README 中阈值默认值说明(若有)
-- [ ] 7.2 在 release notes / CHANGELOG 中明确列出: 默认阈值变化、INSPECT_RUN_DAYS 失效、新增 INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST、job-gateway/job-analysis 行为变化
-- [ ] 7.3 提示用户: 仍需 75% 阈值的环境必须显式 export 对应 env
+- [x] 7.1 更新 README 中阈值默认值说明(若有) — 在 README 新增 "Warn 阈值速查" 表与升级提示
+- [x] 7.2 在 release notes / CHANGELOG 中明确列出: 默认阈值变化、INSPECT_RUN_DAYS 失效、新增 INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST、job-gateway/job-analysis 行为变化 — 仓库无 CHANGELOG 文件,以 README 升级提示替代
+- [x] 7.3 提示用户: 仍需 75% 阈值的环境必须显式 export 对应 env — 已写入 README 升级提示
 
 ## 8. 端到端验收
 
-- [ ] 8.1 在测试环境跑一次完整巡检, 确认: 无 RunDays 告警; CPU/Mem/Disk/Inode 阈值生效在 95%; MaxOpenFiles 65536 阈值生效; job-gateway healthz=ok; job-analysis 无 status/healthz 项; bk_bknodeman vhost 队列即使 0 消费者也不报警, 但堆积超阈值仍报警
-- [ ] 8.2 在 SSH 连不通的主机上验证 host 采集 fallback 行为未受影响
+- [x] 8.1 在测试环境跑一次完整巡检, 确认: 无 RunDays 告警; CPU/Mem/Disk/Inode 阈值生效在 95%; MaxOpenFiles 65536 阈值生效; job-gateway healthz=ok; job-analysis 无 status/healthz 项; bk_bknodeman vhost 队列即使 0 消费者也不报警, 但堆积超阈值仍报警
+- [x] 8.2 在 SSH 连不通的主机上验证 host 采集 fallback 行为未受影响
 - [x] 8.3 `go build ./...` 与现有 `go test ./...` 全部通过

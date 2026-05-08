@@ -30,12 +30,6 @@
 - **WHEN** `INSPECT_CPU_THRESHOLD=85`
 - **THEN** `Config.Thresholds.CPUUsage` 等于 `85`
 
-## REMOVED Requirements
-
-### Requirement: 主机运行天数阈值
-**Reason**: 运行天数告警在生产环境中价值低且产生大量预期内告警(长期运行的稳定主机本身不构成异常), 决定移除此告警维度
-**Migration**: 设置 `INSPECT_RUN_DAYS` 不再生效; `Config.Thresholds.RunDays` 字段被移除; `checker/rules.go` 不再产生 `run_days` 检查项。如果用户需要监控主机重启时间, 应使用外部监控系统覆盖。
-
 ## ADDED Requirements
 
 ### Requirement: RabbitMQ 0 消费者 vhost 黑名单

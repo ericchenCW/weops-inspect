@@ -23,6 +23,9 @@ func normalizeFieldForSignature(field string) string {
 
 // Signature returns a stable hash over the set of alerts. Only Host and Field
 // participate (Value drift, e.g. CPU 76% → 78%, must not change the signature).
+// Threshold is intentionally excluded as well — adjusting an env-driven
+// threshold (e.g. CPU 95% → 90%) must not flush suppression state and resend
+// every alert; the signature identifies the alert *set*, not its parameters.
 // Returns "" when there are no alerts so the empty case is distinguishable.
 func Signature(items []AlertItem) string {
 	if len(items) == 0 {

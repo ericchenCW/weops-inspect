@@ -108,9 +108,9 @@ func main() {
 	allChecks = append(allChecks, checker.CheckRedis(report.RedisStandalone, cfg.Thresholds)...)
 	allChecks = append(allChecks, checker.CheckRedisSentinel(report.RedisSentinel)...)
 	allChecks = append(allChecks, checker.CheckMongo(report.MongoDB)...)
-	allChecks = append(allChecks, checker.CheckRabbitMQ(report.RabbitMQ)...)
+	allChecks = append(allChecks, checker.CheckRabbitMQ(report.RabbitMQ, cfg.Thresholds)...)
 	allChecks = append(allChecks, checker.CheckBKDeps(report.BKMonitorV3)...)
-	allChecks = append(allChecks, checker.CheckReplication(report.Replication)...)
+	allChecks = append(allChecks, checker.CheckReplication(report.Replication, cfg.Thresholds)...)
 
 	// Summary
 	report.Summary = checker.Summarize(allChecks)

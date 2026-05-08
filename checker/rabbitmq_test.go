@@ -3,11 +3,14 @@ package checker
 import (
 	"testing"
 
+	"weops-inspect/config"
 	"weops-inspect/model"
 )
 
+var rmqTestThresholds = config.Thresholds{RabbitMQQueueBacklog: 10000}
+
 func TestCheckRabbitMQ_Nil(t *testing.T) {
-	if got := CheckRabbitMQ(nil); got != nil {
+	if got := CheckRabbitMQ(nil, rmqTestThresholds); got != nil {
 		t.Errorf("want nil, got %v", got)
 	}
 }
@@ -22,7 +25,7 @@ func TestCheckRabbitMQ_AllProblems(t *testing.T) {
 		ExceedingQueues:     []model.RabbitMQQueue{{VHost: "v1", Queue: "celery", MessageCount: 360547}},
 		NoConsumerQueues:    []model.RabbitMQQueue{{VHost: "v1", Queue: "default", MessageCount: 8}},
 	}
-	got := CheckRabbitMQ(r)
+	got := CheckRabbitMQ(r, rmqTestThresholds)
 	if len(got) < 7 {
 		t.Errorf("want >=7 warns, got %d: %v", len(got), got)
 	}
@@ -44,7 +47,7 @@ func TestCheckRabbitMQ_AllProblems(t *testing.T) {
 
 func TestCheckRabbitMQ_AllHealthy(t *testing.T) {
 	r := &model.RabbitMQStatus{}
-	got := CheckRabbitMQ(r)
+	got := CheckRabbitMQ(r, rmqTestThresholds)
 	if len(got) != 0 {
 		t.Errorf("want no warns, got %v", got)
 	}
@@ -54,7 +57,7 @@ func TestCheckRabbitMQ_BacklogFieldFormat(t *testing.T) {
 	r := &model.RabbitMQStatus{
 		ExceedingQueues: []model.RabbitMQQueue{{VHost: "prod_bk_monitorv3", Queue: "celery", MessageCount: 360547}},
 	}
-	got := CheckRabbitMQ(r)
+	got := CheckRabbitMQ(r, rmqTestThresholds)
 	if len(got) != 1 {
 		t.Fatalf("got %v", got)
 	}

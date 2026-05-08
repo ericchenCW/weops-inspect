@@ -13,29 +13,33 @@ import (
 func CheckHost(h model.HostMetrics, thresholds config.Thresholds) []model.CheckResult {
 	var results []model.CheckResult
 
-	add := func(field string, value interface{}, status model.CheckStatus) {
+	add := func(field string, value interface{}, status model.CheckStatus, threshold string) {
 		results = append(results, model.CheckResult{
-			Field:  field,
-			Value:  fmt.Sprintf("%v", value),
-			Status: status,
+			Field:     field,
+			Value:     fmt.Sprintf("%v", value),
+			Status:    status,
+			Threshold: threshold,
 		})
 	}
 
 	// CPU usage
+	cpuThr := fmt.Sprintf("≥ %.0f%%", thresholds.CPUUsage)
 	if h.CPUUsage >= thresholds.CPUUsage {
-		add("cpu_usage", fmt.Sprintf("%.2f%%", h.CPUUsage), model.StatusWarn)
+		add("cpu_usage", fmt.Sprintf("%.2f%%", h.CPUUsage), model.StatusWarn, cpuThr)
 	} else {
-		add("cpu_usage", fmt.Sprintf("%.2f%%", h.CPUUsage), model.StatusOK)
+		add("cpu_usage", fmt.Sprintf("%.2f%%", h.CPUUsage), model.StatusOK, cpuThr)
 	}
 
 	// Memory usage
+	memThr := fmt.Sprintf("≥ %.0f%%", thresholds.MemUsage)
 	if h.MemUsage >= thresholds.MemUsage {
-		add("mem_usage", fmt.Sprintf("%.2f%%", h.MemUsage), model.StatusWarn)
+		add("mem_usage", fmt.Sprintf("%.2f%%", h.MemUsage), model.StatusWarn, memThr)
 	} else {
-		add("mem_usage", fmt.Sprintf("%.2f%%", h.MemUsage), model.StatusOK)
+		add("mem_usage", fmt.Sprintf("%.2f%%", h.MemUsage), model.StatusOK, memThr)
 	}
 
 	// Disk usage
+	diskThr := fmt.Sprintf("≥ %.0f%%", thresholds.DiskUsage)
 	for _, du := range h.DiskUsage {
 		val := du.UsageFloat
 		if val == 0 {
@@ -43,13 +47,14 @@ func CheckHost(h model.HostMetrics, thresholds config.Thresholds) []model.CheckR
 			val, _ = strconv.ParseFloat(numStr, 64)
 		}
 		if val >= thresholds.DiskUsage {
-			add("disk_usage("+du.MountPoint+")", du.Usage, model.StatusWarn)
+			add("disk_usage("+du.MountPoint+")", du.Usage, model.StatusWarn, diskThr)
 		} else {
-			add("disk_usage("+du.MountPoint+")", du.Usage, model.StatusOK)
+			add("disk_usage("+du.MountPoint+")", du.Usage, model.StatusOK, diskThr)
 		}
 	}
 
 	// Inode usage
+	inodeThr := fmt.Sprintf("≥ %.0f%%", thresholds.InodeUsage)
 	for _, iu := range h.InodeUsage {
 		val := iu.UsageFloat
 		if val == 0 {
@@ -57,45 +62,47 @@ func CheckHost(h model.HostMetrics, thresholds config.Thresholds) []model.CheckR
 			val, _ = strconv.ParseFloat(numStr, 64)
 		}
 		if val >= thresholds.InodeUsage {
-			add("inode_usage("+iu.MountPoint+")", iu.Usage, model.StatusWarn)
+			add("inode_usage("+iu.MountPoint+")", iu.Usage, model.StatusWarn, inodeThr)
 		} else {
-			add("inode_usage("+iu.MountPoint+")", iu.Usage, model.StatusOK)
+			add("inode_usage("+iu.MountPoint+")", iu.Usage, model.StatusOK, inodeThr)
 		}
 	}
 
 	// Max open files
+	maxOpenThr := fmt.Sprintf("< %d", thresholds.MaxOpenFiles)
 	if h.MaxOpenFiles < thresholds.MaxOpenFiles {
-		add("max_open_files", h.MaxOpenFiles, model.StatusWarn)
+		add("max_open_files", h.MaxOpenFiles, model.StatusWarn, maxOpenThr)
 	} else {
-		add("max_open_files", h.MaxOpenFiles, model.StatusOK)
+		add("max_open_files", h.MaxOpenFiles, model.StatusOK, maxOpenThr)
 	}
 
 	// SELinux
 	if h.SELinux != "Disabled" && h.SELinux != "N/A" {
-		add("selinux", h.SELinux, model.StatusWarn)
+		add("selinux", h.SELinux, model.StatusWarn, "期望 Disabled")
 	} else {
-		add("selinux", h.SELinux, model.StatusOK)
+		add("selinux", h.SELinux, model.StatusOK, "期望 Disabled")
 	}
 
 	// Firewalld
 	if h.Firewalld != "inactive" && h.Firewalld != "N/A" {
-		add("firewalld", h.Firewalld, model.StatusWarn)
+		add("firewalld", h.Firewalld, model.StatusWarn, "期望 inactive")
 	} else {
-		add("firewalld", h.Firewalld, model.StatusOK)
+		add("firewalld", h.Firewalld, model.StatusOK, "期望 inactive")
 	}
 
 	// Chronyd
 	if h.Chronyd != "active" && h.Chronyd != "N/A" {
-		add("chronyd", h.Chronyd, model.StatusWarn)
+		add("chronyd", h.Chronyd, model.StatusWarn, "期望 active")
 	} else {
-		add("chronyd", h.Chronyd, model.StatusOK)
+		add("chronyd", h.Chronyd, model.StatusOK, "期望 active")
 	}
 
-	// Load average anomaly: loadavg1 > loadavg5 > loadavg15 > cores
+	// Load average anomaly: loadavg1 > loadavg5 > loadavg15 > cores.
+	// Relational rule — no single-value threshold; leave Threshold empty.
 	if h.LoadAvg1 > h.LoadAvg5 && h.LoadAvg5 > h.LoadAvg15 && h.LoadAvg15 > float64(h.Core) {
-		add("load_average", fmt.Sprintf("%.2f/%.2f/%.2f (cores: %d)", h.LoadAvg1, h.LoadAvg5, h.LoadAvg15, h.Core), model.StatusWarn)
+		add("load_average", fmt.Sprintf("%.2f/%.2f/%.2f (cores: %d)", h.LoadAvg1, h.LoadAvg5, h.LoadAvg15, h.Core), model.StatusWarn, "")
 	} else {
-		add("load_average", fmt.Sprintf("%.2f/%.2f/%.2f (cores: %d)", h.LoadAvg1, h.LoadAvg5, h.LoadAvg15, h.Core), model.StatusOK)
+		add("load_average", fmt.Sprintf("%.2f/%.2f/%.2f (cores: %d)", h.LoadAvg1, h.LoadAvg5, h.LoadAvg15, h.Core), model.StatusOK, "")
 	}
 
 	return results
@@ -114,17 +121,20 @@ func CheckService(sm *model.ServiceModule, hostIP, moduleKey string) []model.Che
 	case "":
 		sm.RenderStatus = model.StatusUnknown
 		results = append(results, model.CheckResult{
-			Field:  prefix + "status", Value: "(empty)", Status: model.StatusUnknown,
+			Field: prefix + "status", Value: "(empty)", Status: model.StatusUnknown,
+			Threshold: "期望 active",
 		})
 	case "active":
 		sm.RenderStatus = model.StatusOK
 		results = append(results, model.CheckResult{
 			Field: prefix + "status", Value: sm.Status, Status: model.StatusOK,
+			Threshold: "期望 active",
 		})
 	default:
 		sm.RenderStatus = model.StatusWarn
 		results = append(results, model.CheckResult{
 			Field: prefix + "status", Value: sm.Status, Status: model.StatusWarn,
+			Threshold: "期望 active",
 		})
 	}
 
@@ -137,11 +147,13 @@ func CheckService(sm *model.ServiceModule, hostIP, moduleKey string) []model.Che
 		sm.HealthzRenderStatus = model.StatusOK
 		results = append(results, model.CheckResult{
 			Field: prefix + "healthz", Value: sm.HealthzAPI, Status: model.StatusOK,
+			Threshold: "期望 ok",
 		})
 	} else {
 		sm.HealthzRenderStatus = model.StatusWarn
 		results = append(results, model.CheckResult{
 			Field: prefix + "healthz", Value: sm.HealthzAPI, Status: model.StatusWarn,
+			Threshold: "期望 ok",
 		})
 	}
 
@@ -159,9 +171,10 @@ func CheckServiceContainers(s *model.ServiceStatus, t config.Thresholds) []model
 	if s.ContainersExited > t.ServiceContainersExited {
 		s.ExitedRenderStatus = model.StatusNotice
 		return []model.CheckResult{{
-			Field:  "service." + s.Module + ".docker.exited",
-			Value:  fmt.Sprintf("%d", s.ContainersExited),
-			Status: model.StatusNotice,
+			Field:     "service." + s.Module + ".docker.exited",
+			Value:     fmt.Sprintf("%d", s.ContainersExited),
+			Status:    model.StatusNotice,
+			Threshold: fmt.Sprintf("> %d", t.ServiceContainersExited),
 		}}
 	}
 	s.ExitedRenderStatus = model.StatusOK
@@ -183,15 +196,19 @@ func CheckServiceCollectError(s *model.ServiceStatus) []model.CheckResult {
 
 // CheckReplication produces check results for a ReplicationReport so that
 // replication health rolls up into the overall summary.
-func CheckReplication(rep *model.ReplicationReport) []model.CheckResult {
+func CheckReplication(rep *model.ReplicationReport, t config.Thresholds) []model.CheckResult {
 	if rep == nil {
 		return nil
 	}
 	var results []model.CheckResult
-	add := func(field, value string, status model.CheckStatus) {
-		results = append(results, model.CheckResult{Field: field, Value: value, Status: status})
+	add := func(field, value string, status model.CheckStatus, threshold string) {
+		results = append(results, model.CheckResult{
+			Field: field, Value: value, Status: status, Threshold: threshold,
+		})
 	}
 
+	// MySQL master read_only: relational/multi-condition (collector decides
+	// status from read_only flag + reachability) — leave Threshold empty.
 	for _, m := range rep.MySQLMasters {
 		field := "mysql_master(" + m.IP + ").read_only"
 		val := "OFF"
@@ -199,12 +216,13 @@ func CheckReplication(rep *model.ReplicationReport) []model.CheckResult {
 			val = "ON"
 		}
 		if m.Status == "ok" {
-			add(field, val, model.StatusOK)
+			add(field, val, model.StatusOK, "")
 		} else {
-			add(field, val, model.StatusWarn)
+			add(field, val, model.StatusWarn, "")
 		}
 	}
 
+	mysqlLagThr := fmt.Sprintf("lag > %ds", t.MySQLReplLagSec)
 	for _, s := range rep.MySQLSlaves {
 		if s.Replication == nil {
 			continue
@@ -213,26 +231,29 @@ func CheckReplication(rep *model.ReplicationReport) []model.CheckResult {
 		field := "mysql_slave(" + s.IP + ").replication"
 		val := r.IORunning + "/" + r.SQLRunning + " lag=" + strconvI(r.SecondsBehindMaster) + "s"
 		if r.Status == "ok" {
-			add(field, val, model.StatusOK)
+			add(field, val, model.StatusOK, mysqlLagThr)
 		} else {
-			add(field, val, model.StatusWarn)
+			add(field, val, model.StatusWarn, mysqlLagThr)
 		}
 	}
 
+	redisIOThr := fmt.Sprintf("io > %ds", t.RedisReplIOSec)
 	for _, n := range rep.RedisNodes {
+		// Role consistency is a relational check (master/slave declaration vs
+		// observed) — no single threshold; leave empty.
 		field := "redis(" + n.IP + ").role"
 		if n.RoleConsistencyStatus == "ok" {
-			add(field, n.Role, model.StatusOK)
+			add(field, n.Role, model.StatusOK, "")
 		} else {
-			add(field, n.Role, model.StatusWarn)
+			add(field, n.Role, model.StatusWarn, "")
 		}
 		if n.Role == "slave" && n.LinkStatus != "" && n.LinkStatus != "N/A" {
 			lf := "redis(" + n.IP + ").link"
 			lv := n.MasterLinkStatus + " io=" + strconvI(n.MasterLastIOSeconds) + "s"
 			if n.LinkStatus == "ok" {
-				add(lf, lv, model.StatusOK)
+				add(lf, lv, model.StatusOK, redisIOThr)
 			} else {
-				add(lf, lv, model.StatusWarn)
+				add(lf, lv, model.StatusWarn, redisIOThr)
 			}
 		}
 	}

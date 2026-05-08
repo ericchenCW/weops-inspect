@@ -193,11 +193,15 @@ Notice 项后续上升为应告警，把它在对应 checker 里改成 `StatusWa
 [notify/alerts.go](../notify/alerts.go) `ExtractAlerts(report)` 只读
 `report.AllChecks` 中 `Status == StatusWarn` 的条目，**不读** Unknown / Notice / OK。
 
-每条产生一个 `AlertItem{Host, Field, Value}`：
+每条产生一个 `AlertItem{Host, Field, Value, Threshold}`：
 - `Host`：从 `report.Hosts[].Checks` 反查 Field 对应的 IP；查不到留空（如
   cluster-level 的 RabbitMQ.error）。
 - `Field`：CheckResult.Field（命名约定见 §5）。
 - `Value`：CheckResult.Value。
+- `Threshold`：CheckResult.Threshold，人类可读的触发阈值或期望值（如 `≥ 95%`、
+  `期望 active`、`> 10000 msgs`）；关系型规则（load_average、replication 角色一致性
+  等）为空。邮件正文每行在告警值后追加 `(阈值 X)` 后缀；空 Threshold 不渲染该后缀。
+  Threshold **不参与签名计算**——调阈值（如 95% → 90%）不会刷掉抑制态。
 
 ### 4.2 签名（去重 key）
 
