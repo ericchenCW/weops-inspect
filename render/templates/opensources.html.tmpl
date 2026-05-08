@@ -77,18 +77,14 @@
 {{end}}
 {{end}}
 
-{{/* Redis */}}
-{{if .Redis}}
-{{range .Redis}}
+{{/* Redis - standalone nodes */}}
+{{if .RedisStandalone}}
 <div class="section">
-    <div class="section-title">Redis - {{.Instance}}</div>
+    <div class="section-title">Redis 单点节点</div>
     <div class="section-body">
-        {{if .Error}}
-        <p class="status-warn">{{.Error}}</p>
-        {{else}}
         <table>
-            <tr><th>IP</th><th>版本</th><th>角色</th><th>集群</th><th>内存使用</th><th>最大内存</th><th>运行天数</th><th>连接数</th><th>阻塞数</th><th>Celery队列</th><th>Monitor队列</th></tr>
-            {{range .Nodes}}
+            <tr><th>IP</th><th>版本</th><th>角色</th><th>集群</th><th>内存使用</th><th>最大内存</th><th>运行天数</th><th>连接数</th><th>阻塞数</th><th>Celery队列</th><th>Monitor队列</th><th>错误</th></tr>
+            {{range .RedisStandalone}}
             <tr>
                 <td>{{.IP}}</td>
                 <td>{{.Version}}</td>
@@ -101,13 +97,48 @@
                 <td>{{.BlockedClients}}</td>
                 <td class="{{if gt .CeleryQueue 1000}}status-warn{{end}}">{{.CeleryQueue}}</td>
                 <td class="{{if gt .MonitorQueue 10000}}status-warn{{end}}">{{.MonitorQueue}}</td>
+                <td class="{{if .Error}}status-warn{{end}}">{{.Error}}</td>
+            </tr>
+            {{end}}
+        </table>
+    </div>
+</div>
+{{end}}
+
+{{/* Redis - sentinel cluster */}}
+{{if .RedisSentinel}}
+<div class="section">
+    <div class="section-title">Redis Sentinel 集群</div>
+    <div class="section-body">
+        {{if .RedisSentinel.Error}}
+        <p class="status-warn">{{.RedisSentinel.Error}}</p>
+        {{end}}
+        <table>
+            <tr><th>master 名</th><th>发现的 master</th><th>master 可达</th><th>与 env 一致</th><th>集群状态</th></tr>
+            <tr>
+                <td>{{.RedisSentinel.MasterName}}</td>
+                <td>{{.RedisSentinel.DiscoveredMaster}}</td>
+                <td class="{{if .RedisSentinel.MasterReachable}}status-ok{{else}}status-warn{{end}}">{{if .RedisSentinel.MasterReachable}}是{{else}}否{{end}}</td>
+                <td class="{{if eq .RedisSentinel.MasterEnvMatch "ok"}}status-ok{{else if eq .RedisSentinel.MasterEnvMatch "warn"}}status-warn{{end}}">{{.RedisSentinel.MasterEnvMatch}}</td>
+                <td class="{{if eq .RedisSentinel.Status "ok"}}status-ok{{else}}status-warn{{end}}">{{.RedisSentinel.Status}}</td>
+            </tr>
+        </table>
+        {{if .RedisSentinel.Sentinels}}
+        <h4 style="margin:12px 0 8px;">哨兵节点</h4>
+        <table>
+            <tr><th>IP</th><th>端口</th><th>可达</th><th>错误</th></tr>
+            {{range .RedisSentinel.Sentinels}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td>{{.Port}}</td>
+                <td class="{{if .Reachable}}status-ok{{else}}status-warn{{end}}">{{if .Reachable}}是{{else}}否{{end}}</td>
+                <td>{{.Error}}</td>
             </tr>
             {{end}}
         </table>
         {{end}}
     </div>
 </div>
-{{end}}
 {{end}}
 
 {{/* MongoDB */}}
@@ -182,6 +213,68 @@
             {{end}}
         </table>
         {{end}}
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+{{/* Replication health (MySQL master/slave + Redis master/slave) */}}
+{{if .Replication}}
+<div class="section">
+    <div class="section-title">主从复制健康</div>
+    <div class="section-body">
+        {{if .Replication.MySQLMasters}}
+        <h4 style="margin:0 0 8px;">MySQL master read_only</h4>
+        <table>
+            <tr><th>IP</th><th>read_only</th><th>状态</th><th>错误</th></tr>
+            {{range .Replication.MySQLMasters}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td>{{if .ReadOnly}}ON{{else}}OFF{{end}}</td>
+                <td class="{{if eq .Status "ok"}}status-ok{{else}}status-warn{{end}}">{{.Status}}</td>
+                <td>{{.Error}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+
+        {{if .Replication.MySQLSlaves}}
+        <h4 style="margin:12px 0 8px;">MySQL slave 复制</h4>
+        <table>
+            <tr><th>IP</th><th>IO</th><th>SQL</th><th>延迟(秒)</th><th>master</th><th>状态</th><th>错误</th></tr>
+            {{range .Replication.MySQLSlaves}}
+            <tr>
+                <td>{{.IP}}</td>
+                {{if .Replication}}
+                <td class="{{if eq .Replication.IORunning "Yes"}}status-ok{{else}}status-warn{{end}}">{{.Replication.IORunning}}</td>
+                <td class="{{if eq .Replication.SQLRunning "Yes"}}status-ok{{else}}status-warn{{end}}">{{.Replication.SQLRunning}}</td>
+                <td>{{.Replication.SecondsBehindMaster}}</td>
+                <td>{{.Replication.MasterHost}}</td>
+                <td class="{{if eq .Replication.Status "ok"}}status-ok{{else}}status-warn{{end}}">{{.Replication.Status}}</td>
+                <td>{{.Replication.LastIOError}}{{if and .Replication.LastIOError .Replication.LastSQLError}} / {{end}}{{.Replication.LastSQLError}}</td>
+                {{else}}
+                <td colspan="6" class="status-warn">{{.Error}}</td>
+                {{end}}
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+
+        {{if .Replication.RedisNodes}}
+        <h4 style="margin:12px 0 8px;">Redis 主从角色与同步</h4>
+        <table>
+            <tr><th>IP</th><th>角色</th><th>角色一致</th><th>master 链路</th><th>同步秒</th><th>状态</th></tr>
+            {{range .Replication.RedisNodes}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td>{{.Role}}</td>
+                <td class="{{if eq .RoleConsistencyStatus "ok"}}status-ok{{else}}status-warn{{end}}">{{.RoleConsistencyStatus}}</td>
+                <td>{{.MasterLinkStatus}}</td>
+                <td>{{.MasterLastIOSeconds}}</td>
+                <td class="{{if eq .LinkStatus "ok"}}status-ok{{else if eq .LinkStatus "N/A"}}{{else}}status-warn{{end}}">{{.LinkStatus}}</td>
+            </tr>
+            {{end}}
+        </table>
         {{end}}
     </div>
 </div>

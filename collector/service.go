@@ -48,30 +48,42 @@ func collectServiceOnHost(client *sshclient.Client, module, host string, subs []
 		Module: module,
 	}
 
-	// Build batch command for all sub-modules
+	// Build batch command for all sub-modules.
+	//
+	// Helper bash functions are defined once at the top:
+	//   hz_http URL TIMEOUT  – probes URL, prints HTTP code only on real success
+	//                          (silently fails on connect error / "000" code)
+	//   hz_body URL TIMEOUT  – probes URL, prints body only if non-empty
+	// Both end output with a newline so parseSections can find section headers.
 	var cmdParts []string
+	cmdParts = append(cmdParts,
+		`hz_http(){ c=$(curl -s --connect-timeout "$2" -o /dev/null -w "%{http_code}" "$1" 2>/dev/null); [ -n "$c" ] && [ "$c" != "000" ] && echo "$c"; }`,
+		`hz_body(){ b=$(curl -s --connect-timeout "$2" "$1" 2>/dev/null); [ -n "$b" ] && echo "$b"; }`,
+	)
 	for _, sub := range subs {
 		// systemctl status
 		cmdParts = append(cmdParts, fmt.Sprintf(
 			`echo "===SVC_%s==="; systemctl show %s.service --property=ActiveState,MainPID,ExecMainStartTimestamp 2>/dev/null || echo "ActiveState=not-found"`,
 			sub.Name, sub.ServiceUnit,
 		))
-		// healthz check
+		// healthz check — try 127.0.0.1 first (most uwsgi/web deployments),
+		// fall back to the host's bound IP (services that bind to BK_*_IP only,
+		// e.g. cmdb_apiserver --addrport=<host>:<port>).
 		switch sub.HealthzType {
 		case "http_status":
 			cmdParts = append(cmdParts, fmt.Sprintf(
-				`echo "===HZ_%s==="; curl -s --connect-timeout 2 -o /dev/null -w "%%{http_code}" http://127.0.0.1:%d%s 2>/dev/null || echo "unreachable"`,
-				sub.Name, sub.Port, sub.HealthzPath,
+				`echo "===HZ_%s==="; hz_http http://127.0.0.1:%d%s 2 || hz_http http://%s:%d%s 2 || echo unreachable`,
+				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
 			))
 		case "json_ok":
 			cmdParts = append(cmdParts, fmt.Sprintf(
-				`echo "===HZ_%s==="; curl -s --connect-timeout 2 http://127.0.0.1:%d%s 2>/dev/null || echo "unreachable"`,
-				sub.Name, sub.Port, sub.HealthzPath,
+				`echo "===HZ_%s==="; hz_body http://127.0.0.1:%d%s 2 || hz_body http://%s:%d%s 2 || echo unreachable`,
+				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
 			))
 		case "json_up":
 			cmdParts = append(cmdParts, fmt.Sprintf(
-				`echo "===HZ_%s==="; curl -s --connect-timeout 5 http://127.0.0.1:%d%s 2>/dev/null || echo "unreachable"`,
-				sub.Name, sub.Port, sub.HealthzPath,
+				`echo "===HZ_%s==="; hz_body http://127.0.0.1:%d%s 5 || hz_body http://%s:%d%s 5 || echo unreachable`,
+				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
 			))
 		default:
 			cmdParts = append(cmdParts, fmt.Sprintf(`echo "===HZ_%s==="; echo "N/A"`, sub.Name))

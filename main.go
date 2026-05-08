@@ -35,7 +35,8 @@ func main() {
 	}
 
 	// Initialize SSH client
-	sshClient, err := sshclient.New(cfg.SSHUser, 30*time.Second, 60*time.Second)
+	sshClient, err := sshclient.New(cfg.SSHUser, cfg.SSHPort, cfg.SSHKeyPath, cfg.SSHUseSudo,
+		30*time.Second, 60*time.Second)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "SSH 客户端初始化失败: %v\n", err)
 		os.Exit(1)
@@ -75,9 +76,15 @@ func main() {
 	fmt.Fprintf(os.Stderr, "[3/3] 采集开源组件状态...\n")
 	report.ES = collector.CollectES(cfg)
 	report.MySQL = collector.CollectMySQL(cfg)
-	report.Redis = collector.CollectRedis(cfg)
+	report.RedisStandalone = collector.CollectRedisStandalone(cfg)
+	report.RedisSentinel = collector.CollectRedisSentinel(cfg)
+	collector.CrossCheckSentinelMaster(report.RedisSentinel, cfg.RedisMasterIPs)
 	report.MongoDB = collector.CollectMongo(cfg)
 	report.RabbitMQ = collector.CollectRabbitMQ(cfg)
+	report.Replication = collector.CollectReplication(cfg)
+
+	// Replication checks (no-op when Replication is nil)
+	allChecks = append(allChecks, checker.CheckReplication(report.Replication)...)
 
 	// Summary
 	report.Summary = checker.Summarize(allChecks)

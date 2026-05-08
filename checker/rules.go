@@ -135,6 +135,66 @@ func CheckService(sm model.ServiceModule) []model.CheckResult {
 	return results
 }
 
+// CheckReplication produces check results for a ReplicationReport so that
+// replication health rolls up into the overall summary.
+func CheckReplication(rep *model.ReplicationReport) []model.CheckResult {
+	if rep == nil {
+		return nil
+	}
+	var results []model.CheckResult
+	add := func(field, value string, status model.CheckStatus) {
+		results = append(results, model.CheckResult{Field: field, Value: value, Status: status})
+	}
+
+	for _, m := range rep.MySQLMasters {
+		field := "mysql_master(" + m.IP + ").read_only"
+		val := "OFF"
+		if m.ReadOnly {
+			val = "ON"
+		}
+		if m.Status == "ok" {
+			add(field, val, model.StatusOK)
+		} else {
+			add(field, val, model.StatusWarn)
+		}
+	}
+
+	for _, s := range rep.MySQLSlaves {
+		if s.Replication == nil {
+			continue
+		}
+		r := s.Replication
+		field := "mysql_slave(" + s.IP + ").replication"
+		val := r.IORunning + "/" + r.SQLRunning + " lag=" + strconvI(r.SecondsBehindMaster) + "s"
+		if r.Status == "ok" {
+			add(field, val, model.StatusOK)
+		} else {
+			add(field, val, model.StatusWarn)
+		}
+	}
+
+	for _, n := range rep.RedisNodes {
+		field := "redis(" + n.IP + ").role"
+		if n.RoleConsistencyStatus == "ok" {
+			add(field, n.Role, model.StatusOK)
+		} else {
+			add(field, n.Role, model.StatusWarn)
+		}
+		if n.Role == "slave" && n.LinkStatus != "" && n.LinkStatus != "N/A" {
+			lf := "redis(" + n.IP + ").link"
+			lv := n.MasterLinkStatus + " io=" + strconvI(n.MasterLastIOSeconds) + "s"
+			if n.LinkStatus == "ok" {
+				add(lf, lv, model.StatusOK)
+			} else {
+				add(lf, lv, model.StatusWarn)
+			}
+		}
+	}
+	return results
+}
+
+func strconvI(i int) string { return strconv.Itoa(i) }
+
 // Summarize counts OK and WARN from a list of check results.
 func Summarize(results []model.CheckResult) model.CheckSummary {
 	s := model.CheckSummary{Total: len(results)}

@@ -128,6 +128,56 @@ type MySQLCluster struct {
 	Error    string      `json:"error,omitempty"`
 }
 
+// MySQLReplicationStatus captures slave-side replication state derived from
+// SHOW SLAVE STATUS.
+type MySQLReplicationStatus struct {
+	IORunning           string `json:"io_running"`
+	SQLRunning          string `json:"sql_running"`
+	SecondsBehindMaster int    `json:"seconds_behind_master"`
+	LastIOError         string `json:"last_io_error,omitempty"`
+	LastSQLError        string `json:"last_sql_error,omitempty"`
+	MasterHost          string `json:"master_host,omitempty"`
+	Status              string `json:"status"` // ok / warn / critical / not-configured-as-slave
+}
+
+// MySQLMasterStatus captures master-side configuration sanity (currently just
+// read_only).
+type MySQLMasterStatus struct {
+	IP       string `json:"ip"`
+	ReadOnly bool   `json:"read_only"`
+	Status   string `json:"status"` // ok / warn
+	Error    string `json:"error,omitempty"`
+}
+
+// MySQLSlaveStatus pairs a slave node IP with its replication status.
+type MySQLSlaveStatus struct {
+	IP          string                  `json:"ip"`
+	Replication *MySQLReplicationStatus `json:"replication,omitempty"`
+	Error       string                  `json:"error,omitempty"`
+}
+
+// RedisReplicationStatus captures replication-related fields from `INFO replication`.
+type RedisReplicationStatus struct {
+	IP                    string `json:"ip"`
+	Role                  string `json:"role"`
+	MasterHost            string `json:"master_host,omitempty"`
+	MasterPort            int    `json:"master_port,omitempty"`
+	MasterLinkStatus      string `json:"master_link_status,omitempty"`
+	MasterLastIOSeconds   int    `json:"master_last_io_seconds_ago,omitempty"`
+	MasterSyncInProgress  bool   `json:"master_sync_in_progress,omitempty"`
+	ConnectedSlaves       int    `json:"connected_slaves,omitempty"`
+	RoleConsistencyStatus string `json:"role_consistency_status"` // ok / warn / N/A
+	LinkStatus            string `json:"link_status,omitempty"`   // ok / warn / critical / N/A (slave-only)
+	Error                 string `json:"error,omitempty"`
+}
+
+// ReplicationReport aggregates all replication-related findings.
+type ReplicationReport struct {
+	MySQLMasters []MySQLMasterStatus      `json:"mysql_masters,omitempty"`
+	MySQLSlaves  []MySQLSlaveStatus       `json:"mysql_slaves,omitempty"`
+	RedisNodes   []RedisReplicationStatus `json:"redis_nodes,omitempty"`
+}
+
 // RedisNode represents a Redis node's metrics.
 type RedisNode struct {
 	IP              string `json:"ip"`
@@ -144,11 +194,32 @@ type RedisNode struct {
 	Error           string `json:"error,omitempty"`
 }
 
-// RedisCluster represents a Redis cluster instance.
+// RedisCluster represents a Redis cluster instance (legacy, kept for compatibility).
 type RedisCluster struct {
 	Instance string      `json:"instance"`
 	Nodes    []RedisNode `json:"nodes"`
 	Error    string      `json:"error,omitempty"`
+}
+
+// SentinelNodeStatus represents one Redis sentinel node's reachability.
+type SentinelNodeStatus struct {
+	IP        string `json:"ip"`
+	Port      string `json:"port"`
+	Reachable bool   `json:"reachable"`
+	Error     string `json:"error,omitempty"`
+}
+
+// SentinelClusterStatus represents the cluster-level state of a Redis Sentinel deployment.
+type SentinelClusterStatus struct {
+	MasterName       string               `json:"master_name"`
+	Sentinels        []SentinelNodeStatus `json:"sentinels"`
+	DiscoveredMaster string               `json:"discovered_master,omitempty"` // "ip:port"
+	MasterReachable  bool                 `json:"master_reachable"`
+	Status           string               `json:"status"` // ok / warn / critical
+	// MasterEnvMatch reports whether the sentinel-discovered master IP is
+	// present in Config.RedisMasterIPs. "ok" / "warn" / "N/A".
+	MasterEnvMatch string `json:"master_env_match,omitempty"`
+	Error          string `json:"error,omitempty"`
 }
 
 // MongoMember represents a MongoDB replica set member.
@@ -230,10 +301,12 @@ type InspectReport struct {
 	Timestamp      string                      `json:"timestamp"`
 	Hosts          []HostCheckResult            `json:"hosts"`
 	Services       map[string][]ServiceStatus   `json:"services"` // module -> statuses
-	ES             []ESCluster                  `json:"elasticsearch"`
-	MySQL          []MySQLCluster               `json:"mysql"`
-	Redis          []RedisCluster               `json:"redis"`
-	MongoDB        []MongoCluster               `json:"mongodb"`
-	RabbitMQ       *RabbitMQStatus              `json:"rabbitmq"`
+	ES               []ESCluster                `json:"elasticsearch"`
+	MySQL            []MySQLCluster             `json:"mysql"`
+	RedisStandalone  []RedisNode                `json:"redis_standalone"`
+	RedisSentinel    *SentinelClusterStatus     `json:"redis_sentinel,omitempty"`
+	MongoDB          []MongoCluster             `json:"mongodb"`
+	RabbitMQ         *RabbitMQStatus            `json:"rabbitmq"`
+	Replication      *ReplicationReport         `json:"replication,omitempty"`
 	Summary        CheckSummary                 `json:"summary"`
 }
