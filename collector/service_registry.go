@@ -5,9 +5,17 @@ type SubModule struct {
 	Name        string
 	ServiceUnit string // systemctl unit name, e.g. "bk-cmdb-api"
 	ProcessName string // for ps grep, e.g. "cmdb_api"
-	Port        int    // healthz port
+	Port        int    // business port
 	HealthzPath string // healthz URL path, e.g. "/healthz"
 	HealthzType string // "http_status" | "json_ok" | "json_up" | "none"
+	// HealthzPort overrides Port for the healthz probe only. 0 = use Port.
+	// Spring Cloud Gateway exposes actuator on a separate management port
+	// (e.g. job-gateway: business=10503/TLS, management=19876/http).
+	HealthzPort int
+	// SkipStatusCheck suppresses the systemctl status collection & check.
+	SkipStatusCheck bool
+	// SkipHealthzCheck suppresses the healthz probe & check.
+	SkipHealthzCheck bool
 }
 
 // ModuleRegistry maps module names to their sub-module definitions.
@@ -42,8 +50,9 @@ var ModuleRegistry = map[string][]SubModule{
 		{Name: "job-execute", ServiceUnit: "bk-job-execute", ProcessName: "job-execute", Port: 10502, HealthzPath: "/actuator/health", HealthzType: "json_up"},
 		{Name: "job-logsvr", ServiceUnit: "bk-job-logsvr", ProcessName: "job-logsvr", Port: 10504, HealthzPath: "/actuator/health", HealthzType: "json_up"},
 		{Name: "job-manage", ServiceUnit: "bk-job-manage", ProcessName: "job-manage", Port: 10505, HealthzPath: "/actuator/health", HealthzType: "json_up"},
-		{Name: "job-analysis", ServiceUnit: "bk-job-analysis", ProcessName: "job-analysis", Port: 10508, HealthzPath: "/actuator/health", HealthzType: "json_up"},
-		{Name: "job-gateway", ServiceUnit: "bk-job-gateway", ProcessName: "job-gateway", Port: 10503, HealthzPath: "/actuator/health", HealthzType: "json_up"},
+		{Name: "job-analysis", ServiceUnit: "bk-job-analysis", ProcessName: "job-analysis", Port: 10508, HealthzPath: "/actuator/health", HealthzType: "json_up", SkipStatusCheck: true, SkipHealthzCheck: true},
+		// 业务端口 10503 启用 TLS,actuator 实际跑在独立 management 端口 19876 (http)。
+		{Name: "job-gateway", ServiceUnit: "bk-job-gateway", ProcessName: "job-gateway", Port: 10503, HealthzPort: 19876, HealthzPath: "/actuator/health", HealthzType: "json_up"},
 	},
 	"gse": {
 		{Name: "gse-alarm", ServiceUnit: "bk-gse-alarm", ProcessName: "gse_alarm", Port: 0, HealthzPath: "", HealthzType: "none"},

@@ -61,32 +61,44 @@ func collectServiceOnHost(client *sshclient.Client, module, host string, subs []
 		`hz_body(){ b=$(curl -s --connect-timeout "$2" "$1" 2>/dev/null); [ -n "$b" ] && echo "$b"; }`,
 	)
 	for _, sub := range subs {
-		// systemctl status
-		cmdParts = append(cmdParts, fmt.Sprintf(
-			`echo "===SVC_%s==="; systemctl show %s.service --property=ActiveState,MainPID,ExecMainStartTimestamp 2>/dev/null || echo "ActiveState=not-found"`,
-			sub.Name, sub.ServiceUnit,
-		))
+		// systemctl status (skipped per SubModule.SkipStatusCheck)
+		if !sub.SkipStatusCheck {
+			cmdParts = append(cmdParts, fmt.Sprintf(
+				`echo "===SVC_%s==="; systemctl show %s.service --property=ActiveState,MainPID,ExecMainStartTimestamp 2>/dev/null || echo "ActiveState=not-found"`,
+				sub.Name, sub.ServiceUnit,
+			))
+		}
 		// healthz check — try 127.0.0.1 first (most uwsgi/web deployments),
 		// fall back to the host's bound IP (services that bind to BK_*_IP only,
 		// e.g. cmdb_apiserver --addrport=<host>:<port>).
-		switch sub.HealthzType {
-		case "http_status", "http_alive":
-			cmdParts = append(cmdParts, fmt.Sprintf(
-				`echo "===HZ_%s==="; hz_http http://127.0.0.1:%d%s 2 || hz_http http://%s:%d%s 2 || echo unreachable`,
-				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
-			))
-		case "json_ok":
-			cmdParts = append(cmdParts, fmt.Sprintf(
-				`echo "===HZ_%s==="; hz_body http://127.0.0.1:%d%s 2 || hz_body http://%s:%d%s 2 || echo unreachable`,
-				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
-			))
-		case "json_up":
-			cmdParts = append(cmdParts, fmt.Sprintf(
-				`echo "===HZ_%s==="; hz_body http://127.0.0.1:%d%s 5 || hz_body http://%s:%d%s 5 || echo unreachable`,
-				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
-			))
+		// Use HealthzPort if set, else fall back to Port.
+		hzPort := sub.HealthzPort
+		if hzPort == 0 {
+			hzPort = sub.Port
+		}
+		switch {
+		case sub.SkipHealthzCheck:
+			// skip emitting any HZ section; parsing falls through to "N/A"
 		default:
-			cmdParts = append(cmdParts, fmt.Sprintf(`echo "===HZ_%s==="; echo "N/A"`, sub.Name))
+			switch sub.HealthzType {
+			case "http_status", "http_alive":
+				cmdParts = append(cmdParts, fmt.Sprintf(
+					`echo "===HZ_%s==="; hz_http http://127.0.0.1:%d%s 2 || hz_http http://%s:%d%s 2 || echo unreachable`,
+					sub.Name, hzPort, sub.HealthzPath, host, hzPort, sub.HealthzPath,
+				))
+			case "json_ok":
+				cmdParts = append(cmdParts, fmt.Sprintf(
+					`echo "===HZ_%s==="; hz_body http://127.0.0.1:%d%s 2 || hz_body http://%s:%d%s 2 || echo unreachable`,
+					sub.Name, hzPort, sub.HealthzPath, host, hzPort, sub.HealthzPath,
+				))
+			case "json_up":
+				cmdParts = append(cmdParts, fmt.Sprintf(
+					`echo "===HZ_%s==="; hz_body http://127.0.0.1:%d%s 5 || hz_body http://%s:%d%s 5 || echo unreachable`,
+					sub.Name, hzPort, sub.HealthzPath, host, hzPort, sub.HealthzPath,
+				))
+			default:
+				cmdParts = append(cmdParts, fmt.Sprintf(`echo "===HZ_%s==="; echo "N/A"`, sub.Name))
+			}
 		}
 		// worker count
 		cmdParts = append(cmdParts, fmt.Sprintf(
@@ -114,8 +126,11 @@ func collectServiceOnHost(client *sshclient.Client, module, host string, subs []
 			Module: sub.Name,
 		}
 
-		// Parse systemctl output
-		if svc, ok := sections["SVC_"+sub.Name]; ok {
+		// Parse systemctl output (skipped sub-modules leave Status="" so checker
+		// suppresses the status check entry).
+		if sub.SkipStatusCheck {
+			// no-op: Status stays "" → checker omits status field
+		} else if svc, ok := sections["SVC_"+sub.Name]; ok {
 			props := parseProperties(svc)
 			sm.Status = props["ActiveState"]
 			if sm.Status == "" {
@@ -125,8 +140,10 @@ func collectServiceOnHost(client *sshclient.Client, module, host string, subs []
 			sm.StartTime = props["ExecMainStartTimestamp"]
 		}
 
-		// Parse healthz
-		if hz, ok := sections["HZ_"+sub.Name]; ok {
+		// Parse healthz (skipped sub-modules report N/A → checker omits healthz).
+		if sub.SkipHealthzCheck {
+			sm.HealthzAPI = "N/A"
+		} else if hz, ok := sections["HZ_"+sub.Name]; ok {
 			hz = strings.TrimSpace(hz)
 			switch sub.HealthzType {
 			case "http_status":

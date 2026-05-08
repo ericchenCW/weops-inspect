@@ -70,13 +70,6 @@ func CheckHost(h model.HostMetrics, thresholds config.Thresholds) []model.CheckR
 		add("max_open_files", h.MaxOpenFiles, model.StatusOK)
 	}
 
-	// Run days
-	if h.RunDays >= thresholds.RunDays {
-		add("run_days", h.RunDays, model.StatusWarn)
-	} else {
-		add("run_days", h.RunDays, model.StatusOK)
-	}
-
 	// SELinux
 	if h.SELinux != "Disabled" && h.SELinux != "N/A" {
 		add("selinux", h.SELinux, model.StatusWarn)
@@ -112,14 +105,16 @@ func CheckHost(h model.HostMetrics, thresholds config.Thresholds) []model.CheckR
 func CheckService(sm model.ServiceModule) []model.CheckResult {
 	var results []model.CheckResult
 
-	// Status check
-	status := model.StatusOK
-	if sm.Status != "active" {
-		status = model.StatusWarn
+	// Status check — empty Status means the sub-module opted out (SkipStatusCheck).
+	if sm.Status != "" {
+		status := model.StatusOK
+		if sm.Status != "active" {
+			status = model.StatusWarn
+		}
+		results = append(results, model.CheckResult{
+			Field: "status", Value: sm.Status, Status: status,
+		})
 	}
-	results = append(results, model.CheckResult{
-		Field: "status", Value: sm.Status, Status: status,
-	})
 
 	// Healthz check
 	if sm.HealthzAPI != "N/A" {

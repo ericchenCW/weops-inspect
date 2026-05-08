@@ -64,10 +64,12 @@ type Thresholds struct {
 	InodeUsage      float64
 	MemUsage        float64
 	MaxOpenFiles    int
-	RunDays         int
 	MySQLReplLagSec       int // Seconds_Behind_Master warn threshold
 	RedisReplIOSec        int // master_last_io_seconds_ago warn threshold
 	RabbitMQQueueBacklog  int // RabbitMQ queue messages count warn threshold
+	// vhosts whose queues are exempt from the "0 consumers" alert (queue backlog
+	// alert still applies). env-set value fully replaces the default.
+	RabbitMQNoConsumerVHostBlacklist []string
 }
 
 // Config is the top-level configuration.
@@ -243,27 +245,23 @@ func Load(outputDir string) (*Config, error) {
 	}
 
 	// Thresholds — env-overridable, parse failures abort.
-	cpu, err := parseFloatEnv("INSPECT_CPU_THRESHOLD", 75)
+	cpu, err := parseFloatEnv("INSPECT_CPU_THRESHOLD", 95)
 	if err != nil {
 		return nil, err
 	}
-	disk, err := parseFloatEnv("INSPECT_DISK_THRESHOLD", 75)
+	disk, err := parseFloatEnv("INSPECT_DISK_THRESHOLD", 95)
 	if err != nil {
 		return nil, err
 	}
-	inode, err := parseFloatEnv("INSPECT_INODE_THRESHOLD", 75)
+	inode, err := parseFloatEnv("INSPECT_INODE_THRESHOLD", 95)
 	if err != nil {
 		return nil, err
 	}
-	mem, err := parseFloatEnv("INSPECT_MEM_THRESHOLD", 75)
+	mem, err := parseFloatEnv("INSPECT_MEM_THRESHOLD", 95)
 	if err != nil {
 		return nil, err
 	}
-	maxOpen, err := parseIntEnv("INSPECT_MAX_OPEN_FILES", 102400)
-	if err != nil {
-		return nil, err
-	}
-	runDays, err := parseIntEnv("INSPECT_RUN_DAYS", 365)
+	maxOpen, err := parseIntEnv("INSPECT_MAX_OPEN_FILES", 65536)
 	if err != nil {
 		return nil, err
 	}
@@ -280,15 +278,15 @@ func Load(outputDir string) (*Config, error) {
 		return nil, err
 	}
 	c.Thresholds = Thresholds{
-		CPUUsage:             cpu,
-		DiskUsage:            disk,
-		InodeUsage:           inode,
-		MemUsage:             mem,
-		MaxOpenFiles:         maxOpen,
-		RunDays:              runDays,
-		MySQLReplLagSec:      mysqlLag,
-		RedisReplIOSec:       redisIO,
-		RabbitMQQueueBacklog: rmqBacklog,
+		CPUUsage:                         cpu,
+		DiskUsage:                        disk,
+		InodeUsage:                       inode,
+		MemUsage:                         mem,
+		MaxOpenFiles:                     maxOpen,
+		MySQLReplLagSec:                  mysqlLag,
+		RedisReplIOSec:                   redisIO,
+		RabbitMQQueueBacklog:             rmqBacklog,
+		RabbitMQNoConsumerVHostBlacklist: parseVHostBlacklist(os.Getenv("INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST"), []string{"bk_bknodeman"}),
 	}
 
 	// SSH settings
@@ -429,6 +427,23 @@ func parseIntEnv(key string, def int) (int, error) {
 		return 0, fmt.Errorf("invalid int for %s: %q", key, v)
 	}
 	return n, nil
+}
+
+// parseVHostBlacklist parses a comma-separated vhost blacklist with full-replace
+// semantics: env unset → use def; env set (even to "") → fully replaces def.
+// Empty/whitespace-only entries are dropped, so `INSPECT_..._BLACKLIST=` disables
+// the blacklist entirely.
+func parseVHostBlacklist(envVal string, def []string) []string {
+	if _, present := os.LookupEnv("INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST"); !present {
+		return def
+	}
+	var out []string
+	for _, p := range strings.Split(envVal, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // parseBoolEnv reads a bool from env (1/true/yes → true), default if unset.

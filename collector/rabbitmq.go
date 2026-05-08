@@ -39,11 +39,16 @@ func CollectRabbitMQ(ctx context.Context, cfg *config.Config) *model.RabbitMQSta
 	if apiTimeout <= 0 {
 		apiTimeout = 60
 	}
+	noConsumerVHostBL := make(map[string]bool, len(cfg.Thresholds.RabbitMQNoConsumerVHostBlacklist))
+	for _, v := range cfg.Thresholds.RabbitMQNoConsumerVHostBlacklist {
+		noConsumerVHostBL[v] = true
+	}
 	probe := &rmqProbe{
 		host: host, port: port, user: user, pass: pass,
 		target: target, status: status,
-		backlogThreshold: cfg.Thresholds.RabbitMQQueueBacklog,
-		apiTimeoutSec:    apiTimeout,
+		backlogThreshold:    cfg.Thresholds.RabbitMQQueueBacklog,
+		noConsumerVHostBL:   noConsumerVHostBL,
+		apiTimeoutSec:       apiTimeout,
 	}
 	// 4 个 endpoint 串行调用,各自最多 apiTimeout 秒;给框架一个略宽松的总 deadline,
 	// 避免 RunProbe 默认 5s 兜底 kill 掉 curl ("signal: killed")。
@@ -58,7 +63,10 @@ type rmqProbe struct {
 	target                 string
 	status                 *model.RabbitMQStatus
 	backlogThreshold       int
-	apiTimeoutSec          int
+	// vhosts whose 0-consumer queues should not raise an alert. Backlog alerts
+	// still apply even for blacklisted vhosts.
+	noConsumerVHostBL map[string]bool
+	apiTimeoutSec     int
 }
 
 func (p *rmqProbe) Name() string { return "rabbitmq" }
@@ -155,7 +163,7 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 				if msgs >= p.backlogThreshold {
 					p.status.ExceedingQueues = append(p.status.ExceedingQueues, queueInfo)
 				}
-				if consumers == 0 && msgs > 0 {
+				if consumers == 0 && msgs > 0 && !p.noConsumerVHostBL[vhost] {
 					p.status.NoConsumerQueues = append(p.status.NoConsumerQueues, queueInfo)
 				}
 			}
