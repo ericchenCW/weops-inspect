@@ -119,6 +119,7 @@ type MySQLNode struct {
 	TableOpenCache       int    `json:"table_open_cache"`
 	WaitTimeout          int    `json:"wait_timeout"`
 	Error                string `json:"error,omitempty"`
+	ErrorClass           string `json:"error_class,omitempty"`
 }
 
 // MySQLCluster represents a MySQL cluster instance.

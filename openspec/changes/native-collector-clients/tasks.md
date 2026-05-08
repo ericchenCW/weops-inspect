@@ -1,31 +1,31 @@
 ## 1. 探针框架(`collector-probe-framework`)
 
-- [ ] 1.1 在 `collector/probe.go` 新增 `ErrorClass` 枚举(`network` / `auth` / `protocol` / `timeout` / `unknown` / 空)
-- [ ] 1.2 定义 `ProbeResult` 结构(`Target` / `Latency` / `Err` / `ErrClass`),并补 `Logger` 接口与 `nopLogger` fallback
-- [ ] 1.3 定义 `Probe` 接口(`Name() string` / `Run(ctx) ProbeResult`)
-- [ ] 1.4 实现 `classify(err error) ErrorClass` 工具函数:`*net.OpError` / DNS 解析失败 → `network`;`context.DeadlineExceeded` / `i/o timeout` → `timeout`;按驱动专属错误把 MySQL 1045、Redis `NOAUTH`/`WRONGPASS`、Mongo auth fail → `auth`;非 2xx HTTP / 解析失败 → `protocol`;其余 → `unknown`
-- [ ] 1.5 实现 `redactDSN(s string) string`(MySQL DSN 中 `user:pass@` 与 Mongo URI `mongodb://user:pass@`)以及 `wrapErr(err) error` 在错误传播路径上脱敏
-- [ ] 1.6 实现 `RunProbe(ctx, p Probe, defaultTimeout=5s)`:套 `context.WithTimeout`、计时、调用 `Logger.Probe(...)`、返回 `ProbeResult`
-- [ ] 1.7 在 `collector/common.go`(或新建 `collector/logger.go`)暴露默认 `Logger` 注入点;`main.go` 暂不接,保留 nopLogger 即可
+- [x] 1.1 在 `collector/probe.go` 新增 `ErrorClass` 枚举(`network` / `auth` / `protocol` / `timeout` / `unknown` / 空)
+- [x] 1.2 定义 `ProbeResult` 结构(`Target` / `Latency` / `Err` / `ErrClass`),并补 `Logger` 接口与 `nopLogger` fallback
+- [x] 1.3 定义 `Probe` 接口(`Name() string` / `Run(ctx) ProbeResult`)
+- [x] 1.4 实现 `classify(err error) ErrorClass` 工具函数:`*net.OpError` / DNS 解析失败 → `network`;`context.DeadlineExceeded` / `i/o timeout` → `timeout`;按驱动专属错误把 MySQL 1045、Redis `NOAUTH`/`WRONGPASS`、Mongo auth fail → `auth`;非 2xx HTTP / 解析失败 → `protocol`;其余 → `unknown`
+- [x] 1.5 实现 `redactDSN(s string) string`(MySQL DSN 中 `user:pass@` 与 Mongo URI `mongodb://user:pass@`)以及 `wrapErr(err) error` 在错误传播路径上脱敏
+- [x] 1.6 实现 `RunProbe(ctx, p Probe, defaultTimeout=5s)`:套 `context.WithTimeout`、计时、调用 `Logger.Probe(...)`、返回 `ProbeResult`
+- [x] 1.7 在 `collector/common.go`(或新建 `collector/logger.go`)暴露默认 `Logger` 注入点;`main.go` 暂不接,保留 nopLogger 即可
 
 ## 2. 引入驱动依赖
 
-- [ ] 2.1 `go get github.com/go-sql-driver/mysql@latest`
-- [ ] 2.2 `go get github.com/redis/go-redis/v9@latest`
-- [ ] 2.3 `go get go.mongodb.org/mongo-driver/mongo@latest`(v1)
-- [ ] 2.4 确认 `go mod tidy` 后 `go.sum` 干净,无 cgo 依赖被牵入(`go build -tags 'osusergo netgo'` 验证)
-- [ ] 2.5 三平台交叉编译验证:`GOOS=linux GOARCH=amd64`、`GOOS=linux GOARCH=arm64`、`GOOS=linux GOARCH=arm64`(aarch64 别名)产物均能产出
+- [x] 2.1 `go get github.com/go-sql-driver/mysql@latest`
+- [ ] 2.2 `go get github.com/redis/go-redis/v9@latest`(段二随 redis collector 引入,tidy 会自动添加)
+- [ ] 2.3 `go get go.mongodb.org/mongo-driver/mongo@latest`(v1)(段二同上;注意 v1 已 deprecated,落地时再判断是否切 v2)
+- [x] 2.4 确认 `go mod tidy` 后 `go.sum` 干净,无 cgo 依赖被牵入(`go build -tags 'osusergo netgo'` 验证)
+- [x] 2.5 三平台交叉编译验证:`GOOS=linux GOARCH=amd64`、`GOOS=linux GOARCH=arm64` 均产出 (aarch64 与 arm64 共享产物)
 
 ## 3. MySQL collector 重写(`collector/mysql.go`)
 
-- [ ] 3.1 删除 `exec.LookPath("mysql")` 与 `mysqlQuery` / `mysqlQueryInt` 文本工具
-- [ ] 3.2 新增 `openMySQL(ip, port string, creds) (*sql.DB, error)`:DSN 形如 `user:pass@tcp(ip:port)/?timeout=3s&readTimeout=5s&writeTimeout=5s&interpolateParams=true`,设置 `db.SetMaxOpenConns(1)` / `SetMaxIdleConns(0)`
-- [ ] 3.3 用 `db.QueryRowContext(ctx, "SELECT @@VERSION")` 等替换原文本查询;批量字段一次 `SELECT` 多个 `@@xxx` 减少握手次数
-- [ ] 3.4 改 `SHOW SLAVE STATUS` 为 `db.QueryContext` + `rows.Columns()` + `rows.Scan` 到 `[]sql.RawBytes`,按列名取值;同时尝试 `SHOW REPLICA STATUS` 作 8.4 fallback
-- [ ] 3.5 `SHOW MASTER LOGS` 改为先尝试 `SHOW BINARY LOGS`,失败回退;`BinlogCount = len(rows)`
-- [ ] 3.6 `collectMySQLNode` 实现 `Probe` 接口,把所有错误经 `classify` 打标,并写入 `MySQLNode.ErrorClass`
-- [ ] 3.7 `model.MySQLNode` 新增 `ErrorClass string` 字段(omitempty 渲染兼容)
-- [ ] 3.8 端到端冒烟:对 `bk.env` 测试集群跑一次,字段值与改造前完全一致(`Version` / `MaxConnections` / `Role` / `BinlogCount` 等)
+- [x] 3.1 删除 `exec.LookPath("mysql")` 与 `mysqlQuery` / `mysqlQueryInt` 文本工具(注:`replication.go` 段一过渡期保留私有 `mysqlQuery` shim,段二一并删除)
+- [x] 3.2 新增 `openMySQL(ip, port string, creds) (*sql.DB, error)`:DSN 形如 `user:pass@tcp(ip:port)/?timeout=3s&readTimeout=5s&writeTimeout=5s&interpolateParams=true`,设置 `db.SetMaxOpenConns(1)` / `SetMaxIdleConns(0)`
+- [x] 3.3 用 `db.QueryRowContext(ctx, "SELECT @@VERSION")` 等替换原文本查询;批量字段一次 `SELECT` 多个 `@@xxx` 减少握手次数
+- [x] 3.4 改 `SHOW SLAVE STATUS` 为 `db.QueryContext` + `rows.Columns()` + `rows.Scan` 到 `[]sql.RawBytes`,按列名取值;同时尝试 `SHOW REPLICA STATUS` 作 8.4 fallback
+- [x] 3.5 `SHOW MASTER LOGS` 改为先尝试 `SHOW BINARY LOGS`,失败回退;`BinlogCount = len(rows)`
+- [x] 3.6 `collectMySQLNode` 实现 `Probe` 接口,把所有错误经 `classify` 打标,并写入 `MySQLNode.ErrorClass`
+- [x] 3.7 `model.MySQLNode` 新增 `ErrorClass string` 字段(omitempty 渲染兼容)
+- [ ] 3.8 端到端冒烟:对 `bk.env` 测试集群跑一次(用户后续手工验证)
 
 ## 4. Redis collector 重写(`collector/redis.go` + `collector/replication.go` Redis 部分)
 
@@ -58,9 +58,9 @@
 
 ## 7. 主流程接入
 
-- [ ] 7.1 `main.go` / 调用方传入 `context.Background()` 给所有 collector(本次保持串行,不引入并发)
-- [ ] 7.2 删除 collector 中所有 `exec.LookPath` / `os/exec` 的 import(rabbitmq.go、es.go 仍保留 `os/exec`)
-- [ ] 7.3 `go vet ./...` + `go build ./...` + 三平台交叉编译全部通过
+- [ ] 7.1 `main.go` / 调用方传入 `context.Background()` 给所有 collector(段一已对 MySQL 接入,段二补 redis/mongo)
+- [ ] 7.2 删除 collector 中所有 `exec.LookPath` / `os/exec` 的 import(rabbitmq.go、es.go 仍保留 `os/exec`)(段一已删 mysql.go;redis/mongo 段二处理)
+- [x] 7.3 `go vet ./...` + `go build ./...` + 三平台交叉编译全部通过
 
 ## 8. 单元测试(回归网)
 

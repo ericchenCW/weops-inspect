@@ -10,6 +10,16 @@ import (
 	"weops-inspect/model"
 )
 
+// 段一过渡:replication.go 仍走 CLI 路径,保留私有 helper 直到段二切换到原生驱动。
+func mysqlQuery(baseArgs []string, query string) string {
+	args := append(append([]string{}, baseArgs...), "-e", query)
+	out, err := exec.Command("mysql", args...).CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // CollectReplication walks through master/slave IPs declared in cfg and
 // gathers replication health for both MySQL and Redis. Returns nil when no
 // master/slave info is configured, so the field can be omitted from reports.

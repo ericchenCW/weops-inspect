@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -76,7 +77,7 @@ func main() {
 	// Phase 3: Collect open source components
 	fmt.Fprintf(os.Stderr, "[3/3] 采集开源组件状态...\n")
 	report.ES = collector.CollectES(cfg)
-	report.MySQL = collector.CollectMySQL(cfg)
+	report.MySQL = collector.CollectMySQL(context.Background(), cfg)
 	report.RedisStandalone = collector.CollectRedisStandalone(cfg)
 	report.RedisSentinel = collector.CollectRedisSentinel(cfg)
 	collector.CrossCheckSentinelMaster(report.RedisSentinel, cfg.RedisMasterIPs)
