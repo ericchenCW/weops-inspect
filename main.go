@@ -46,7 +46,7 @@ func main() {
 
 	// Phase 1: Collect host metrics
 	fmt.Fprintf(os.Stderr, "[1/3] 采集主机指标 (%d 台主机)...\n", len(cfg.AllHosts))
-	hostMetrics := collector.CollectAllHosts(sshClient, cfg.AllHosts, cfg.CheckMountPath)
+	hostMetrics := collector.CollectAllHosts(sshClient, cfg.AllHosts, cfg.CheckMountPath, cfg.DiskIncludeNFS)
 
 	// Apply rules and build host check results
 	var allChecks []model.CheckResult

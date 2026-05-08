@@ -10,6 +10,33 @@ weops-inspect -o /var/log/weops
 
 配置以 `BK_*` / `INSPECT_*` 环境变量为准（与 `bk.env` 对齐）。
 
+## 磁盘采集配置
+
+主机磁盘 / inode 使用率通过远端 `df -ThP` / `df -iPT` 采集，按以下规则筛选要纳入
+告警判断的挂载点：
+
+| `CHECK_MOUNT_PATH`     | 行为                                                                 |
+|-----------------------|----------------------------------------------------------------------|
+| 留空（默认）          | 自动按文件系统类型采集所有"真实"磁盘（xfs/ext4/btrfs/zfs 等）       |
+| `/data:/var:/home`    | 仅采集冒号分隔列表中**完全相等**的挂载点（不做前缀匹配）            |
+
+无论哪种模式，伪文件系统（`tmpfs` / `devtmpfs` / `overlay` / `squashfs` / `shm` /
+`proc` / `sysfs` / `cgroup` / `autofs` 等）始终排除，避免容器宿主机被淹没。
+
+NFS / SMB（`nfs` / `nfs4` / `cifs` / `smbfs` / `smb3`）默认不采，需要时显式启用：
+
+```sh
+INSPECT_DISK_INCLUDE_NFS=true
+```
+
+> **Breaking change（v? 起）**：旧版本默认 `CHECK_MOUNT_PATH=/data`，未配置 `/data`
+> 挂载的主机会静默漏采（最典型：LVM 把数据合并到 `/`）。新默认改为"采所有真实磁盘"，
+> 升级后阈值告警面会扩大；想保持原行为请显式 `CHECK_MOUNT_PATH=/data`。
+>
+> 当 `df` 输出非空但筛选结果为 0 条时，主机条目的 `error` 字段会追加
+> `disk: configured mount paths [...] did not match any of [...]` 形式的 warning，
+> 便于发现配置和实际挂载不匹配的情况。
+
 ## 邮件告警通知
 
 巡检结束后可选地把告警情况通过邮件推送给运维。配置文件位置：

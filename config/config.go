@@ -126,8 +126,15 @@ type Config struct {
 	// Output settings
 	OutputDir string
 
-	// Mount paths to check
+	// Mount paths to check. Empty = collect all "real" filesystems (filtered by
+	// fs-type allow/block lists). Non-empty = colon-separated list of mount
+	// points to match exactly.
 	CheckMountPath string
+
+	// DiskIncludeNFS, when true, includes nfs/nfs4/cifs/smbfs/smb3 mounts in the
+	// default (CheckMountPath empty) collection. NFS is otherwise excluded by
+	// default to avoid network-flap induced noise.
+	DiskIncludeNFS bool
 }
 
 // parseIPList splits a comma-separated IP list, trimming whitespace.
@@ -282,8 +289,11 @@ func Load(outputDir string) (*Config, error) {
 	c.SSHUseSudo = parseBoolEnv("INSPECT_SSH_USE_SUDO", false)
 	c.SSHTimeout = 30
 
-	// Mount paths
-	c.CheckMountPath = envOrDefault("CHECK_MOUNT_PATH", "/data")
+	// Mount paths. Default empty -> collect all real filesystems (see
+	// collector/host.go fs-type filtering). Set CHECK_MOUNT_PATH=/data:/var
+	// for the legacy exact-match behavior.
+	c.CheckMountPath = os.Getenv("CHECK_MOUNT_PATH")
+	c.DiskIncludeNFS = parseBoolEnv("INSPECT_DISK_INCLUDE_NFS", false)
 
 	// Build deduplicated host list (BK modules + infra)
 	c.AllHosts = c.buildAllHosts()
