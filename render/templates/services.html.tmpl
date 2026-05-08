@@ -1,0 +1,50 @@
+{{define "services.html.tmpl"}}
+{{range $module, $statuses := .Services}}
+<div class="section">
+    <div class="section-title">{{$module}} 服务状态</div>
+    <div class="section-body">
+        <table>
+            <tr>
+                <th>主机</th>
+                <th>子模块</th>
+                <th>状态</th>
+                <th>健康检查</th>
+                <th>PID</th>
+                <th>启动时间</th>
+                <th>Workers</th>
+            </tr>
+            {{range $statuses}}
+            {{$hostIP := .HostIP}}
+            {{if .Error}}
+            <tr>
+                <td>{{$hostIP}}</td>
+                <td colspan="6" class="status-warn">{{.Error}}</td>
+            </tr>
+            {{else}}
+            {{range .Services}}
+            <tr>
+                <td>{{$hostIP}}</td>
+                <td>{{.Module}}</td>
+                <td class="{{if eq .Status "active"}}status-ok{{else}}status-warn{{end}}">{{.Status}}</td>
+                <td class="{{if eq .HealthzAPI "ok"}}status-ok{{else if eq .HealthzAPI "N/A"}}status-na{{else}}status-warn{{end}}">{{.HealthzAPI}}</td>
+                <td>{{.MainPID}}</td>
+                <td>{{.StartTime}}</td>
+                <td>{{.Workers}}</td>
+            </tr>
+            {{end}}
+            {{if or (gt .ContainersUp 0) (gt .ContainersExited 0)}}
+            <tr>
+                <td>{{$hostIP}}</td>
+                <td>Docker 容器</td>
+                <td class="status-ok">运行: {{.ContainersUp}}</td>
+                <td class="{{if gt .ContainersExited 0}}status-warn{{else}}status-ok{{end}}">退出: {{.ContainersExited}}</td>
+                <td colspan="3"></td>
+            </tr>
+            {{end}}
+            {{end}}
+            {{end}}
+        </table>
+    </div>
+</div>
+{{end}}
+{{end}}

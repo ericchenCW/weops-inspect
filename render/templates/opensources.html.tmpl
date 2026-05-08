@@ -1,0 +1,190 @@
+{{define "opensources.html.tmpl"}}
+
+{{/* Elasticsearch */}}
+{{if .ES}}
+{{range .ES}}
+<div class="section">
+    <div class="section-title">Elasticsearch 集群 - {{.Instance}}</div>
+    <div class="section-body">
+        {{if .Error}}
+        <p class="status-warn">{{.Error}}</p>
+        {{else}}
+        <table>
+            <tr><th>集群名称</th><th>状态</th><th>节点数</th><th>数据节点</th><th>活跃分片</th><th>未分配分片</th><th>待处理任务</th><th>分片百分比</th></tr>
+            <tr>
+                <td>{{.ClusterName}}</td>
+                <td style="color:{{esStatusColor .Status}};font-weight:bold;">{{.Status}}</td>
+                <td>{{.NumberOfNodes}}</td>
+                <td>{{.NumberOfDataNodes}}</td>
+                <td>{{.ActiveShards}}</td>
+                <td class="{{if gt .UnassignedShards 0}}status-warn{{end}}">{{.UnassignedShards}}</td>
+                <td>{{.PendingTasks}}</td>
+                <td>{{printf "%.1f%%" .ActiveShardsPercent}}</td>
+            </tr>
+        </table>
+        {{if .Nodes}}
+        <table style="margin-top:12px;">
+            <tr><th>节点IP</th><th>角色</th><th>Heap%</th><th>RAM%</th><th>CPU%</th><th>Load 1m</th><th>Load 5m</th><th>Load 15m</th></tr>
+            {{range .Nodes}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td>{{.Role}}</td>
+                <td class="{{if gt .HeapPercent 85}}status-warn{{end}}">{{.HeapPercent}}%</td>
+                <td class="{{if gt .RAMPercent 95}}status-warn{{end}}">{{.RAMPercent}}%</td>
+                <td>{{.CPU}}%</td>
+                <td>{{printf "%.2f" .Load1m}}</td>
+                <td>{{printf "%.2f" .Load5m}}</td>
+                <td>{{printf "%.2f" .Load15m}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* MySQL */}}
+{{if .MySQL}}
+{{range .MySQL}}
+<div class="section">
+    <div class="section-title">MySQL - {{.Instance}}</div>
+    <div class="section-body">
+        {{if .Error}}
+        <p class="status-warn">{{.Error}}</p>
+        {{else}}
+        <table>
+            <tr><th>IP</th><th>版本</th><th>角色</th><th>最大连接</th><th>日志过期天数</th><th>Binlog数</th><th>慢查询</th><th>字符集</th><th>缓冲池</th><th>IO容量</th></tr>
+            {{range .Nodes}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td>{{.Version}}</td>
+                <td>{{.Role}}</td>
+                <td>{{.MaxConnections}}</td>
+                <td>{{.ExpireLogsDays}}</td>
+                <td>{{.BinlogCount}}</td>
+                <td>{{.SlowQueryLog}}</td>
+                <td>{{.CharacterSet}}</td>
+                <td>{{.BufferPoolSize}}</td>
+                <td>{{.InnodbIOCapacity}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* Redis */}}
+{{if .Redis}}
+{{range .Redis}}
+<div class="section">
+    <div class="section-title">Redis - {{.Instance}}</div>
+    <div class="section-body">
+        {{if .Error}}
+        <p class="status-warn">{{.Error}}</p>
+        {{else}}
+        <table>
+            <tr><th>IP</th><th>版本</th><th>角色</th><th>集群</th><th>内存使用</th><th>最大内存</th><th>运行天数</th><th>连接数</th><th>阻塞数</th><th>Celery队列</th><th>Monitor队列</th></tr>
+            {{range .Nodes}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td>{{.Version}}</td>
+                <td>{{.Role}}</td>
+                <td>{{.ClusterEnabled}}</td>
+                <td>{{.UsedMemory}}</td>
+                <td>{{.MaxMemory}}</td>
+                <td>{{.UptimeDays}}</td>
+                <td>{{.ConnectedClients}}</td>
+                <td>{{.BlockedClients}}</td>
+                <td class="{{if gt .CeleryQueue 1000}}status-warn{{end}}">{{.CeleryQueue}}</td>
+                <td class="{{if gt .MonitorQueue 10000}}status-warn{{end}}">{{.MonitorQueue}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* MongoDB */}}
+{{if .MongoDB}}
+{{range .MongoDB}}
+<div class="section">
+    <div class="section-title">MongoDB - {{.Instance}}</div>
+    <div class="section-body">
+        {{if .Error}}
+        <p class="status-warn">{{.Error}}</p>
+        {{else}}
+        <table>
+            <tr><th>节点</th><th>健康</th><th>状态</th><th>运行时间(s)</th><th>同步源</th></tr>
+            {{range .Members}}
+            <tr>
+                <td>{{.Name}}</td>
+                <td class="{{if eq .Health 1}}status-ok{{else}}status-warn{{end}}">{{if eq .Health 1}}健康{{else}}异常{{end}}</td>
+                <td>{{.StateStr}}</td>
+                <td>{{.Uptime}}</td>
+                <td>{{.SyncSourceHost}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* RabbitMQ */}}
+{{if .RabbitMQ}}
+<div class="section">
+    <div class="section-title">RabbitMQ</div>
+    <div class="section-body">
+        {{if .RabbitMQ.Error}}
+        <p class="status-warn">{{.RabbitMQ.Error}}</p>
+        {{else}}
+        <table>
+            <tr><th>集群分区</th><th>运行时间</th><th>连接数</th><th>异常连接</th><th>通道数</th></tr>
+            <tr>
+                <td class="{{if .RabbitMQ.ClusterPartition}}status-warn{{else}}status-ok{{end}}">{{if .RabbitMQ.ClusterPartition}}存在分区{{else}}正常{{end}}</td>
+                <td>{{.RabbitMQ.Uptime}}</td>
+                <td>{{.RabbitMQ.TotalConnections}}</td>
+                <td class="{{if gt .RabbitMQ.AbnormalConnections 0}}status-warn{{end}}">{{.RabbitMQ.AbnormalConnections}}</td>
+                <td>{{.RabbitMQ.TotalChannels}}</td>
+            </tr>
+        </table>
+        {{if .RabbitMQ.NodeAlarms}}
+        <h4 style="margin:12px 0 8px;">节点告警</h4>
+        <table>
+            <tr><th>节点</th><th>内存告警</th><th>磁盘告警</th></tr>
+            {{range .RabbitMQ.NodeAlarms}}
+            <tr>
+                <td>{{.Node}}</td>
+                <td class="{{if .MemAlarm}}status-warn{{else}}status-ok{{end}}">{{if .MemAlarm}}告警{{else}}正常{{end}}</td>
+                <td class="{{if .DiskFreeAlarm}}status-warn{{else}}status-ok{{end}}">{{if .DiskFreeAlarm}}告警{{else}}正常{{end}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+        {{if .RabbitMQ.ExceedingQueues}}
+        <h4 style="margin:12px 0 8px;">消息积压队列 (&gt;1000)</h4>
+        <table>
+            <tr><th>VHost</th><th>队列</th><th>消息数</th><th>消费者</th></tr>
+            {{range .RabbitMQ.ExceedingQueues}}
+            <tr>
+                <td>{{.VHost}}</td>
+                <td>{{.Queue}}</td>
+                <td class="status-warn">{{.MessageCount}}</td>
+                <td>{{.Consumers}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+{{end}}

@@ -1,0 +1,163 @@
+{{define "hosts.html.tmpl"}}
+{{if .Hosts}}
+<div class="section">
+    <div class="section-title">主机巡检信息</div>
+    <div class="section-body">
+        <table>
+            <tr>
+                <th style="width:180px;">检查项</th>
+                {{range .Hosts}}<th>{{.Metrics.IP}}</th>{{end}}
+            </tr>
+            {{$hosts := .Hosts}}
+            {{$fields := (list
+                "CPU使用率" "cpu_usage"
+                "内存使用率" "mem_usage"
+                "平均负载" "load_average"
+                "磁盘使用率" "disk_usage"
+                "Inode使用率" "inode_usage"
+                "最大文件打开数" "max_open_files"
+                "运行天数" "run_days"
+                "SELinux" "selinux"
+                "防火墙" "firewalld"
+                "Chronyd" "chronyd"
+            )}}
+            <!-- CPU Usage -->
+            <tr>
+                <td>CPU使用率</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "cpu_usage"}}
+                <td class="status-{{$c.Status}}">{{$c.Value}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>内存使用率</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "mem_usage"}}
+                <td class="status-{{$c.Status}}">{{$c.Value}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>平均负载</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "load_average"}}
+                <td class="status-{{$c.Status}}">{{$c.Value}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>Swap使用率</td>
+                {{range .Hosts}}
+                <td>{{printf "%.2f%%" .Metrics.SwapUsage}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>磁盘使用率</td>
+                {{range .Hosts}}
+                <td>{{range .Metrics.DiskUsage}}{{.MountPoint}}: {{.Usage}}<br>{{end}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>Inode使用率</td>
+                {{range .Hosts}}
+                <td>{{range .Metrics.InodeUsage}}{{.MountPoint}}: {{.Usage}}<br>{{end}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>最大文件打开数</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "max_open_files"}}
+                <td class="status-{{$c.Status}}">{{.Metrics.MaxOpenFiles}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>进程数</td>
+                {{range .Hosts}}<td>{{.Metrics.ProcessTotal}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>NTPD</td>
+                {{range .Hosts}}<td>{{.Metrics.Ntpd}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>Chronyd</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "chronyd"}}
+                <td class="status-{{$c.Status}}">{{.Metrics.Chronyd}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>SELinux</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "selinux"}}
+                <td class="status-{{$c.Status}}">{{.Metrics.SELinux}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>防火墙</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "firewalld"}}
+                <td class="status-{{$c.Status}}">{{.Metrics.Firewalld}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>IPTables</td>
+                {{range .Hosts}}<td>{{.Metrics.Iptables}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>网络(ESTABLISHED)</td>
+                {{range .Hosts}}<td>{{.Metrics.Network.Established}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>网络(TIME_WAIT)</td>
+                {{range .Hosts}}<td>{{.Metrics.Network.TimeWait}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>网络(CLOSE_WAIT)</td>
+                {{range .Hosts}}<td>{{.Metrics.Network.CloseWait}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>网络(LISTEN)</td>
+                {{range .Hosts}}<td>{{.Metrics.Network.Listen}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>运行天数</td>
+                {{range .Hosts}}
+                {{$c := findCheck .Checks "run_days"}}
+                <td class="status-{{$c.Status}}">{{.Metrics.RunDays}}</td>
+                {{end}}
+            </tr>
+            <tr>
+                <td>系统版本</td>
+                {{range .Hosts}}<td>{{.Metrics.Version}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>内核版本</td>
+                {{range .Hosts}}<td>{{.Metrics.Kernel}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>内存(MB)</td>
+                {{range .Hosts}}<td>{{printf "%.1f" .Metrics.Memory}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>Swap(MB)</td>
+                {{range .Hosts}}<td>{{printf "%.1f" .Metrics.Swap}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>CPU核数</td>
+                {{range .Hosts}}<td>{{.Metrics.Core}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>制造商</td>
+                {{range .Hosts}}<td>{{.Metrics.Manufacturer}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>产品型号</td>
+                {{range .Hosts}}<td>{{.Metrics.Product}}</td>{{end}}
+            </tr>
+            <tr>
+                <td>序列号</td>
+                {{range .Hosts}}<td>{{.Metrics.Serial}}</td>{{end}}
+            </tr>
+        </table>
+    </div>
+</div>
+{{end}}
+{{end}}
