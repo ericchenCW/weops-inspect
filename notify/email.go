@@ -47,7 +47,11 @@ func BuildAlertBody(report *model.InspectReport, items []AlertItem) string {
 		if host == "" {
 			host = "-"
 		}
-		fmt.Fprintf(&b, "  %-16s %-40s = %s\n", host, it.Field, it.Value)
+		if it.Threshold != "" {
+			fmt.Fprintf(&b, "  %-16s %-40s = %s  (阈值 %s)\n", host, it.Field, it.Value, it.Threshold)
+		} else {
+			fmt.Fprintf(&b, "  %-16s %-40s = %s\n", host, it.Field, it.Value)
+		}
 	}
 
 	b.WriteString("\n详见附件 weops_inspection.html。\n")

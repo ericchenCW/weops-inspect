@@ -346,10 +346,16 @@ const (
 )
 
 // CheckResult represents the result of checking one field against a rule.
+// Threshold is a human-readable description of the threshold or expected value
+// that triggered a non-OK status (e.g. "≥ 95%", "< 65536", "期望 active").
+// Empty when the rule has no single-valued threshold (e.g. relational rules
+// like load_average 1m>5m>15m>cores). Threshold is informational only and
+// MUST NOT be included in alert signature computation.
 type CheckResult struct {
-	Field  string      `json:"field"`
-	Value  string      `json:"value"`
-	Status CheckStatus `json:"status"`
+	Field     string      `json:"field"`
+	Value     string      `json:"value"`
+	Status    CheckStatus `json:"status"`
+	Threshold string      `json:"threshold,omitempty"`
 }
 
 // CheckSummary holds aggregated rule check results.

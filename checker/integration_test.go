@@ -99,9 +99,9 @@ func runFullChecker(r *model.InspectReport, t config.Thresholds) []model.CheckRe
 	all = append(all, checker.CheckRedis(r.RedisStandalone, t)...)
 	all = append(all, checker.CheckRedisSentinel(r.RedisSentinel)...)
 	all = append(all, checker.CheckMongo(r.MongoDB)...)
-	all = append(all, checker.CheckRabbitMQ(r.RabbitMQ)...)
+	all = append(all, checker.CheckRabbitMQ(r.RabbitMQ, t)...)
 	all = append(all, checker.CheckBKDeps(r.BKMonitorV3)...)
-	all = append(all, checker.CheckReplication(r.Replication)...)
+	all = append(all, checker.CheckReplication(r.Replication, t)...)
 	return all
 }
 

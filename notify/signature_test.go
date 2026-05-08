@@ -10,6 +10,14 @@ func TestSignature_StableAcrossValueChanges(t *testing.T) {
 	}
 }
 
+func TestSignature_StableAcrossThresholdChanges(t *testing.T) {
+	a := []AlertItem{{Host: "10.0.0.1", Field: "cpu_usage", Value: "96%", Threshold: "≥ 95%"}}
+	b := []AlertItem{{Host: "10.0.0.1", Field: "cpu_usage", Value: "96%", Threshold: "≥ 90%"}}
+	if Signature(a) != Signature(b) {
+		t.Fatalf("signature must ignore Threshold changes (env retune must not flush suppression)")
+	}
+}
+
 func TestSignature_OrderInsensitive(t *testing.T) {
 	a := []AlertItem{
 		{Host: "10.0.0.1", Field: "cpu_usage"},

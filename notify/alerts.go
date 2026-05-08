@@ -6,11 +6,15 @@ import (
 
 // AlertItem is a normalized warn entry, used by both signature calculation and
 // email body rendering. Host may be empty when the check is not host-scoped
-// (e.g. cluster-level RabbitMQ findings).
+// (e.g. cluster-level RabbitMQ findings). Threshold is a human-readable
+// description of the trigger threshold (e.g. "≥ 95%", "期望 active") and is
+// empty for relational rules; it is rendered in the email body but MUST NOT
+// participate in signature computation.
 type AlertItem struct {
-	Host  string
-	Field string
-	Value string
+	Host      string
+	Field     string
+	Value     string
+	Threshold string
 }
 
 // ExtractAlerts returns all Warn-status entries from the report's flat
@@ -39,9 +43,10 @@ func ExtractAlerts(report *model.InspectReport) []AlertItem {
 		}
 		host := hostByField[c.Field]
 		items = append(items, AlertItem{
-			Host:  host,
-			Field: c.Field,
-			Value: c.Value,
+			Host:      host,
+			Field:     c.Field,
+			Value:     c.Value,
+			Threshold: c.Threshold,
 		})
 	}
 	return items

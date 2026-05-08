@@ -3,6 +3,7 @@ package checker
 import (
 	"fmt"
 
+	"weops-inspect/config"
 	"weops-inspect/model"
 )
 
@@ -11,7 +12,7 @@ import (
 // Per design.md D4, ExceedingQueues / NoConsumerQueues are already filtered by
 // the collector (with vhost blacklist applied), so the checker just maps each
 // element to a Warn CheckResult and backfills per-cell render statuses.
-func CheckRabbitMQ(r *model.RabbitMQStatus) []model.CheckResult {
+func CheckRabbitMQ(r *model.RabbitMQStatus, t config.Thresholds) []model.CheckResult {
 	if r == nil {
 		return nil
 	}
@@ -73,13 +74,15 @@ func CheckRabbitMQ(r *model.RabbitMQStatus) []model.CheckResult {
 		}
 	}
 
+	backlogThr := fmt.Sprintf("> %d msgs", t.RabbitMQQueueBacklog)
 	for i := range r.ExceedingQueues {
 		q := &r.ExceedingQueues[i]
 		q.MessageStatus = model.StatusWarn
 		results = append(results, model.CheckResult{
-			Field:  "rabbitmq." + q.VHost + "." + q.Queue + ".backlog",
-			Value:  fmt.Sprintf("%d msgs / %d consumers", q.MessageCount, q.Consumers),
-			Status: model.StatusWarn,
+			Field:     "rabbitmq." + q.VHost + "." + q.Queue + ".backlog",
+			Value:     fmt.Sprintf("%d msgs / %d consumers", q.MessageCount, q.Consumers),
+			Status:    model.StatusWarn,
+			Threshold: backlogThr,
 		})
 	}
 
