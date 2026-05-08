@@ -68,8 +68,9 @@ type Thresholds struct {
 	MemUsage        float64
 	MaxOpenFiles    int
 	RunDays         int
-	MySQLReplLagSec int // Seconds_Behind_Master warn threshold
-	RedisReplIOSec  int // master_last_io_seconds_ago warn threshold
+	MySQLReplLagSec       int // Seconds_Behind_Master warn threshold
+	RedisReplIOSec        int // master_last_io_seconds_ago warn threshold
+	RabbitMQQueueBacklog  int // RabbitMQ queue messages count warn threshold
 }
 
 // Config is the top-level configuration.
@@ -267,15 +268,20 @@ func Load(outputDir string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	rmqBacklog, err := parseIntEnv("INSPECT_RABBITMQ_QUEUE_BACKLOG_THRESHOLD", 10000)
+	if err != nil {
+		return nil, err
+	}
 	c.Thresholds = Thresholds{
-		CPUUsage:        cpu,
-		DiskUsage:       disk,
-		InodeUsage:      inode,
-		MemUsage:        mem,
-		MaxOpenFiles:    maxOpen,
-		RunDays:         runDays,
-		MySQLReplLagSec: mysqlLag,
-		RedisReplIOSec:  redisIO,
+		CPUUsage:             cpu,
+		DiskUsage:            disk,
+		InodeUsage:           inode,
+		MemUsage:             mem,
+		MaxOpenFiles:         maxOpen,
+		RunDays:              runDays,
+		MySQLReplLagSec:      mysqlLag,
+		RedisReplIOSec:       redisIO,
+		RabbitMQQueueBacklog: rmqBacklog,
 	}
 
 	// SSH settings

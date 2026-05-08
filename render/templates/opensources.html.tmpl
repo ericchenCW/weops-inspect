@@ -200,7 +200,7 @@
         </table>
         {{end}}
         {{if .RabbitMQ.ExceedingQueues}}
-        <h4 style="margin:12px 0 8px;">消息积压队列 (&gt;1000)</h4>
+        <h4 style="margin:12px 0 8px;">消息积压队列</h4>
         <table>
             <tr><th>VHost</th><th>队列</th><th>消息数</th><th>消费者</th></tr>
             {{range .RabbitMQ.ExceedingQueues}}
@@ -209,6 +209,20 @@
                 <td>{{.Queue}}</td>
                 <td class="status-warn">{{.MessageCount}}</td>
                 <td>{{.Consumers}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
+        {{if .RabbitMQ.NoConsumerQueues}}
+        <h4 style="margin:12px 0 8px;">无消费者队列</h4>
+        <table>
+            <tr><th>VHost</th><th>队列</th><th>消息数</th><th>消费者</th></tr>
+            {{range .RabbitMQ.NoConsumerQueues}}
+            <tr>
+                <td>{{.VHost}}</td>
+                <td>{{.Queue}}</td>
+                <td>{{.MessageCount}}</td>
+                <td class="status-warn">{{.Consumers}}</td>
             </tr>
             {{end}}
         </table>
