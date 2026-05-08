@@ -18,11 +18,11 @@ echo "===DF==="; df -h
 echo "===DFI==="; df -i
 echo "===ULIMIT==="; ulimit -n
 echo "===PROCS==="; ps -eLf 2>/dev/null | wc -l
-echo "===NTPD==="; systemctl is-active ntpd 2>/dev/null || echo "N/A"
-echo "===CHRONYD==="; systemctl is-active chronyd 2>/dev/null || echo "N/A"
+echo "===NTPD==="; out=$(systemctl is-active ntpd 2>/dev/null); echo "${out:-N/A}"
+echo "===CHRONYD==="; out=$(systemctl is-active chronyd 2>/dev/null); echo "${out:-N/A}"
 echo "===SELINUX==="; getenforce 2>/dev/null || echo "N/A"
-echo "===FIREWALLD==="; systemctl is-active firewalld 2>/dev/null || echo "N/A"
-echo "===IPTABLES==="; systemctl is-active iptables 2>/dev/null || echo "N/A"
+echo "===FIREWALLD==="; out=$(systemctl is-active firewalld 2>/dev/null); echo "${out:-N/A}"
+echo "===IPTABLES==="; out=$(systemctl is-active iptables 2>/dev/null); echo "${out:-N/A}"
 echo "===SS==="; ss -s 2>/dev/null
 echo "===UPTIME==="; cat /proc/uptime
 echo "===VERSION==="; cat /etc/redhat-release 2>/dev/null || cat /etc/os-release 2>/dev/null | head -1

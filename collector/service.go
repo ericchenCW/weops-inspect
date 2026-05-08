@@ -70,7 +70,7 @@ func collectServiceOnHost(client *sshclient.Client, module, host string, subs []
 		// fall back to the host's bound IP (services that bind to BK_*_IP only,
 		// e.g. cmdb_apiserver --addrport=<host>:<port>).
 		switch sub.HealthzType {
-		case "http_status":
+		case "http_status", "http_alive":
 			cmdParts = append(cmdParts, fmt.Sprintf(
 				`echo "===HZ_%s==="; hz_http http://127.0.0.1:%d%s 2 || hz_http http://%s:%d%s 2 || echo unreachable`,
 				sub.Name, sub.Port, sub.HealthzPath, host, sub.Port, sub.HealthzPath,
@@ -134,6 +134,15 @@ func collectServiceOnHost(client *sshclient.Client, module, host string, subs []
 					sm.HealthzAPI = "ok"
 				} else {
 					sm.HealthzAPI = hz
+				}
+			case "http_alive":
+				// Service has no formal healthz path — any HTTP response code
+				// proves the port is bound and serving. Only "unreachable"
+				// (curl couldn't connect) is a real failure.
+				if hz == "unreachable" || hz == "" {
+					sm.HealthzAPI = "unreachable"
+				} else {
+					sm.HealthzAPI = "ok"
 				}
 			case "json_ok":
 				if strings.Contains(hz, `"ok"`) && (strings.Contains(hz, "true") || strings.Contains(hz, "True")) {

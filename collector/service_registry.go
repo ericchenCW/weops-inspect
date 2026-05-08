@@ -68,6 +68,6 @@ var ModuleRegistry = map[string][]SubModule{
 		{Name: "usermgr", ServiceUnit: "bk-usermgr", ProcessName: "usermgr", Port: 8009, HealthzPath: "/healthz", HealthzType: "http_status"},
 	},
 	"nodeman": {
-		{Name: "nodeman", ServiceUnit: "bk-nodeman", ProcessName: "nodeman", Port: 10300, HealthzPath: "/healthz", HealthzType: "http_status"},
+		{Name: "nodeman", ServiceUnit: "bk-nodeman", ProcessName: "nodeman", Port: 10300, HealthzPath: "/", HealthzType: "http_alive"},
 	},
 }
