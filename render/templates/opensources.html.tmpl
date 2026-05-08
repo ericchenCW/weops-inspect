@@ -280,4 +280,24 @@
 </div>
 {{end}}
 
+{{/* bkmonitorv3 dependency connectivity */}}
+{{if .BKMonitorV3}}
+<div class="section">
+    <div class="section-title">bkmonitorv3 依赖连通性</div>
+    <div class="section-body">
+        <table>
+            <tr><th>依赖项</th><th>端点</th><th>状态</th><th>详情</th></tr>
+            {{range .BKMonitorV3.Dependencies}}
+            <tr>
+                <td>{{.Item}}</td>
+                <td>{{.Endpoint}}</td>
+                <td class="{{if eq .Status "ok"}}status-ok{{else if eq .Status "skip"}}{{else}}status-warn{{end}}">{{.Status}}</td>
+                <td>{{.Detail}}</td>
+            </tr>
+            {{end}}
+        </table>
+    </div>
+</div>
+{{end}}
+
 {{end}}

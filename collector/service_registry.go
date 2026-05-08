@@ -70,4 +70,12 @@ var ModuleRegistry = map[string][]SubModule{
 	"nodeman": {
 		{Name: "nodeman", ServiceUnit: "bk-nodeman", ProcessName: "nodeman", Port: 10300, HealthzPath: "/", HealthzType: "http_alive"},
 	},
+	"bkmonitorv3": {
+		// monitor 走 supervisord 拉起多个 Python 进程,故 ProcessName 取 supervisord
+		// (worker 数反映 supervisor 自身,子进程不计)。
+		{Name: "monitor", ServiceUnit: "bk-monitor", ProcessName: "supervisord", Port: 10204, HealthzPath: "/", HealthzType: "http_alive"},
+		{Name: "influxdb-proxy", ServiceUnit: "bk-influxdb-proxy", ProcessName: "influxdb-proxy", Port: 10203, HealthzPath: "/", HealthzType: "http_alive"},
+		{Name: "transfer", ServiceUnit: "bk-transfer", ProcessName: "transfer", Port: 10202, HealthzPath: "/", HealthzType: "http_alive"},
+		{Name: "unify-query", ServiceUnit: "bk-unify-query", ProcessName: "unify-query", Port: 10206, HealthzPath: "/", HealthzType: "http_alive"},
+	},
 }

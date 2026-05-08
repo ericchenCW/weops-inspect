@@ -308,5 +308,20 @@ type InspectReport struct {
 	MongoDB          []MongoCluster             `json:"mongodb"`
 	RabbitMQ         *RabbitMQStatus            `json:"rabbitmq"`
 	Replication      *ReplicationReport         `json:"replication,omitempty"`
+	BKMonitorV3     *BKMonitorV3Section         `json:"bkmonitorv3,omitempty"`
 	Summary        CheckSummary                 `json:"summary"`
+}
+
+// DependencyResult is a single module-dependency probe result.
+type DependencyResult struct {
+	Item     string `json:"item"`
+	Endpoint string `json:"endpoint"`
+	Status   string `json:"status"` // ok | fail | unreachable | skip
+	Detail   string `json:"detail,omitempty"`
+}
+
+// BKMonitorV3Section holds bkmonitorv3-specific report content (currently the
+// dependency connectivity checks; service-level data lives under Report.Services).
+type BKMonitorV3Section struct {
+	Dependencies []DependencyResult `json:"dependencies"`
 }

@@ -13,6 +13,41 @@ type ModuleHosts struct {
 	IPs    []string
 }
 
+// BKMonitorV3DepConfig holds endpoints + credentials used by the bkmonitorv3
+// dependency probe. Mirrors the checks in bk-install/health_check/deploy_check.py.
+type BKMonitorV3DepConfig struct {
+	RedisHost     string
+	RedisPort     string
+	RedisPassword string
+
+	MonitorMySQLHost     string
+	MonitorMySQLPort     string
+	MonitorMySQLUser     string
+	MonitorMySQLPassword string
+
+	PaaSMySQLHost     string
+	PaaSMySQLPort     string
+	PaaSMySQLUser     string
+	PaaSMySQLPassword string
+
+	RabbitMQHost     string
+	RabbitMQPort     string
+	RabbitMQUser     string
+	RabbitMQPassword string
+	RabbitMQVHost    string
+
+	ZKHost string
+	ZKPort string
+
+	ES7Host     string
+	ES7RestPort string
+	ES7User     string
+	ES7Password string
+
+	InfluxDBHost string
+	InfluxDBPort string
+}
+
 // Credentials holds database/service credentials.
 type Credentials struct {
 	MySQLUser        string
@@ -49,6 +84,7 @@ type Config struct {
 	IAMIPs     []string
 	UserMgrIPs []string
 	NodeManIPs []string
+	MonitorV3IPs []string
 
 	// Open source component hosts
 	ES7IPs           []string
@@ -65,6 +101,11 @@ type Config struct {
 	MongoDBPort      string
 	MongoRSName      string
 	RabbitMQIPs      []string
+
+	// bkmonitorv3 dependency endpoints (read from BK_MONITOR_* / BK_PAAS_MYSQL_* /
+	// BK_GSE_ZK_* / BK_INFLUXDB_*). Used by the bkmonitorv3 dependency probe; any
+	// missing field is left as "" and the corresponding probe is skipped.
+	BKMonitorV3 BKMonitorV3DepConfig
 
 	// All unique host IPs (deduplicated, BK modules + infra nodes)
 	AllHosts []string
@@ -119,6 +160,41 @@ func Load(outputDir string) (*Config, error) {
 	c.IAMIPs = parseIPList(os.Getenv("BK_IAM_IP_COMMA"))
 	c.UserMgrIPs = parseIPList(os.Getenv("BK_USERMGR_IP_COMMA"))
 	c.NodeManIPs = parseIPList(os.Getenv("BK_NODEMAN_IP_COMMA"))
+	c.MonitorV3IPs = parseIPList(os.Getenv("BK_MONITORV3_IP_COMMA"))
+
+	// bkmonitorv3 dependency endpoints (used only by the bkmonitorv3 dep probe).
+	c.BKMonitorV3 = BKMonitorV3DepConfig{
+		RedisHost:     os.Getenv("BK_MONITOR_REDIS_HOST"),
+		RedisPort:     os.Getenv("BK_MONITOR_REDIS_PORT"),
+		RedisPassword: os.Getenv("BK_MONITOR_REDIS_PASSWORD"),
+
+		MonitorMySQLHost:     os.Getenv("BK_MONITOR_MYSQL_HOST"),
+		MonitorMySQLPort:     os.Getenv("BK_MONITOR_MYSQL_PORT"),
+		MonitorMySQLUser:     os.Getenv("BK_MONITOR_MYSQL_USER"),
+		MonitorMySQLPassword: os.Getenv("BK_MONITOR_MYSQL_PASSWORD"),
+
+		PaaSMySQLHost:     os.Getenv("BK_PAAS_MYSQL_HOST"),
+		PaaSMySQLPort:     os.Getenv("BK_PAAS_MYSQL_PORT"),
+		PaaSMySQLUser:     os.Getenv("BK_PAAS_MYSQL_USER"),
+		PaaSMySQLPassword: os.Getenv("BK_PAAS_MYSQL_PASSWORD"),
+
+		RabbitMQHost:     os.Getenv("BK_MONITOR_RABBITMQ_HOST"),
+		RabbitMQPort:     os.Getenv("BK_MONITOR_RABBITMQ_PORT"),
+		RabbitMQUser:     os.Getenv("BK_MONITOR_RABBITMQ_USERNAME"),
+		RabbitMQPassword: os.Getenv("BK_MONITOR_RABBITMQ_PASSWORD"),
+		RabbitMQVHost:    os.Getenv("BK_MONITOR_RABBITMQ_VHOST"),
+
+		ZKHost: os.Getenv("BK_GSE_ZK_HOST"),
+		ZKPort: os.Getenv("BK_GSE_ZK_PORT"),
+
+		ES7Host:     os.Getenv("BK_MONITOR_ES7_HOST"),
+		ES7RestPort: os.Getenv("BK_MONITOR_ES7_REST_PORT"),
+		ES7User:     os.Getenv("BK_MONITOR_ES7_USER"),
+		ES7Password: os.Getenv("BK_MONITOR_ES7_PASSWORD"),
+
+		InfluxDBHost: os.Getenv("BK_INFLUXDB_IP0"),
+		InfluxDBPort: os.Getenv("BK_MONITOR_INFLUXDB_PORT"),
+	}
 
 	// Open source components — read from *_IP_COMMA (the array-literal *_IP form
 	// in bk.env is not exportable as a scalar env var).
@@ -235,6 +311,7 @@ func (c *Config) GetModuleHosts() []ModuleHosts {
 		{Module: "iam", IPs: c.IAMIPs},
 		{Module: "usermgr", IPs: c.UserMgrIPs},
 		{Module: "nodeman", IPs: c.NodeManIPs},
+		{Module: "bkmonitorv3", IPs: c.MonitorV3IPs},
 	}
 }
 
@@ -248,7 +325,7 @@ func (c *Config) buildAllHosts() []string {
 	allIPs := [][]string{
 		c.PaaSIPs, c.CMDBIPs, c.JobIPs, c.GSEIPs,
 		c.APPOIPs, c.APPTIPs, c.IAMIPs, c.UserMgrIPs,
-		c.NodeManIPs,
+		c.NodeManIPs, c.MonitorV3IPs,
 		c.ES7IPs, c.RabbitMQIPs, c.MySQLIPs, c.MongoDBIPs,
 		c.RedisIPs, c.RedisSentinelIPs,
 	}

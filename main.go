@@ -83,6 +83,9 @@ func main() {
 	report.MongoDB = collector.CollectMongo(cfg)
 	report.RabbitMQ = collector.CollectRabbitMQ(cfg)
 	report.Replication = collector.CollectReplication(cfg)
+	if deps := collector.CollectBKMonitorV3Deps(cfg); deps != nil {
+		report.BKMonitorV3 = &model.BKMonitorV3Section{Dependencies: deps}
+	}
 
 	// Replication checks (no-op when Replication is nil)
 	allChecks = append(allChecks, checker.CheckReplication(report.Replication)...)
