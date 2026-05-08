@@ -1,8 +1,9 @@
 package collector
 
 import (
+	"context"
 	"fmt"
-	"os/exec"
+	"net"
 	"strconv"
 	"strings"
 
@@ -10,65 +11,53 @@ import (
 	"weops-inspect/model"
 )
 
-// 段一过渡:replication.go 仍走 CLI 路径,保留私有 helper 直到段二切换到原生驱动。
-func mysqlQuery(baseArgs []string, query string) string {
-	args := append(append([]string{}, baseArgs...), "-e", query)
-	out, err := exec.Command("mysql", args...).CombinedOutput()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // CollectReplication walks through master/slave IPs declared in cfg and
-// gathers replication health for both MySQL and Redis. Returns nil when no
-// master/slave info is configured, so the field can be omitted from reports.
-func CollectReplication(cfg *config.Config) *model.ReplicationReport {
+// gathers replication health for both MySQL and Redis using native drivers.
+// Returns nil when no master/slave info is configured.
+func CollectReplication(ctx context.Context, cfg *config.Config) *model.ReplicationReport {
 	rep := &model.ReplicationReport{}
 
-	// MySQL — collected only when CLI is available.
-	if _, err := exec.LookPath("mysql"); err == nil {
-		for _, ip := range cfg.MySQLMasterIPs {
-			rep.MySQLMasters = append(rep.MySQLMasters, collectMySQLMaster(ip, cfg.MySQLPort, cfg.Creds))
-		}
-		for _, ip := range cfg.MySQLSlaveIPs {
-			rep.MySQLSlaves = append(rep.MySQLSlaves, collectMySQLSlave(ip, cfg.MySQLPort, cfg.Creds, cfg.Thresholds.MySQLReplLagSec))
-		}
+	for _, ip := range cfg.MySQLMasterIPs {
+		rep.MySQLMasters = append(rep.MySQLMasters, collectMySQLMaster(ctx, ip, cfg.MySQLPort, cfg.Creds))
+	}
+	for _, ip := range cfg.MySQLSlaveIPs {
+		rep.MySQLSlaves = append(rep.MySQLSlaves, collectMySQLSlave(ctx, ip, cfg.MySQLPort, cfg.Creds, cfg.Thresholds.MySQLReplLagSec))
+	}
+	for _, ip := range cfg.RedisMasterIPs {
+		rep.RedisNodes = append(rep.RedisNodes, collectRedisReplication(ctx, ip, cfg.RedisPort, cfg.Creds.RedisPassword, "master", cfg.Thresholds.RedisReplIOSec))
+	}
+	for _, ip := range cfg.RedisSlaveIPs {
+		rep.RedisNodes = append(rep.RedisNodes, collectRedisReplication(ctx, ip, cfg.RedisPort, cfg.Creds.RedisPassword, "slave", cfg.Thresholds.RedisReplIOSec))
 	}
 
-	// Redis — collected only when CLI is available.
-	if _, err := exec.LookPath("redis-cli"); err == nil {
-		for _, ip := range cfg.RedisMasterIPs {
-			rep.RedisNodes = append(rep.RedisNodes, collectRedisReplication(ip, cfg.RedisPort, cfg.Creds.RedisPassword, "master", cfg.Thresholds.RedisReplIOSec))
-		}
-		for _, ip := range cfg.RedisSlaveIPs {
-			rep.RedisNodes = append(rep.RedisNodes, collectRedisReplication(ip, cfg.RedisPort, cfg.Creds.RedisPassword, "slave", cfg.Thresholds.RedisReplIOSec))
-		}
-	}
-
-	// If nothing was collected (env declares no master/slave at all), omit.
 	if len(rep.MySQLMasters) == 0 && len(rep.MySQLSlaves) == 0 && len(rep.RedisNodes) == 0 {
 		return nil
 	}
 	return rep
 }
 
-// collectMySQLMaster checks read_only on a master.
-func collectMySQLMaster(ip, port string, creds config.Credentials) model.MySQLMasterStatus {
-	baseArgs := []string{
-		"-u" + creds.MySQLUser,
-		"-p" + creds.MySQLPassword,
-		"-h" + ip,
-		"-P" + port,
-		"-N", "-s",
+// collectMySQLMaster checks read_only on a master via native driver.
+func collectMySQLMaster(ctx context.Context, ip, port string, creds config.Credentials) model.MySQLMasterStatus {
+	st := model.MySQLMasterStatus{IP: ip}
+
+	db, err := openMySQL(ip, port, creds)
+	if err != nil {
+		st.Status = "warn"
+		st.Error = "connect failed: " + RedactDSN(err.Error())
+		st.ErrorClass = string(classifyMySQL(err))
+		return st
 	}
-	out := mysqlQuery(baseArgs, "SELECT @@read_only")
-	if out == "" {
-		return model.MySQLMasterStatus{IP: ip, Status: "warn", Error: "query failed"}
+	defer db.Close()
+
+	var v int
+	if err := db.QueryRowContext(ctx, "SELECT @@global.read_only").Scan(&v); err != nil {
+		st.Status = "warn"
+		st.Error = "query failed: " + RedactDSN(err.Error())
+		st.ErrorClass = string(classifyMySQL(err))
+		return st
 	}
-	readOnly := out == "1"
-	st := model.MySQLMasterStatus{IP: ip, ReadOnly: readOnly}
-	if readOnly {
+	st.ReadOnly = v == 1
+	if st.ReadOnly {
 		st.Status = "warn"
 	} else {
 		st.Status = "ok"
@@ -76,49 +65,42 @@ func collectMySQLMaster(ip, port string, creds config.Credentials) model.MySQLMa
 	return st
 }
 
-// collectMySQLSlave runs SHOW SLAVE STATUS and grades the slave.
-func collectMySQLSlave(ip, port string, creds config.Credentials, lagThreshold int) model.MySQLSlaveStatus {
-	baseArgs := []string{
-		"-u" + creds.MySQLUser,
-		"-p" + creds.MySQLPassword,
-		"-h" + ip,
-		"-P" + port,
-		"-N", "-s",
-	}
+// collectMySQLSlave runs SHOW SLAVE STATUS via native driver and grades the slave.
+func collectMySQLSlave(ctx context.Context, ip, port string, creds config.Credentials, lagThreshold int) model.MySQLSlaveStatus {
 	res := model.MySQLSlaveStatus{IP: ip}
-	out := mysqlQuery(baseArgs, "SHOW SLAVE STATUS\\G")
-	if out == "" {
-		res.Error = "query failed"
+
+	db, err := openMySQL(ip, port, creds)
+	if err != nil {
+		res.Error = "connect failed: " + RedactDSN(err.Error())
+		res.ErrorClass = string(classifyMySQL(err))
 		return res
 	}
-	if !strings.Contains(out, "Slave_IO_Running") {
-		// Empty result set = node is not configured as slave.
+	defer db.Close()
+
+	cols, row, qerr := queryStatusVertical(ctx, db, "SHOW SLAVE STATUS")
+	if qerr != nil || len(cols) == 0 {
+		// Fallback for MySQL 8.4+.
+		cols, row, qerr = queryStatusVertical(ctx, db, "SHOW REPLICA STATUS")
+	}
+	if qerr != nil {
+		res.Error = "query failed: " + RedactDSN(qerr.Error())
+		res.ErrorClass = string(classifyMySQL(qerr))
+		return res
+	}
+	if len(cols) == 0 {
+		// 节点未配置为 slave。
 		res.Replication = &model.MySQLReplicationStatus{Status: "not-configured-as-slave"}
 		return res
 	}
 
 	r := &model.MySQLReplicationStatus{}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "Slave_IO_Running:"):
-			r.IORunning = strings.TrimSpace(strings.TrimPrefix(line, "Slave_IO_Running:"))
-		case strings.HasPrefix(line, "Slave_SQL_Running:"):
-			r.SQLRunning = strings.TrimSpace(strings.TrimPrefix(line, "Slave_SQL_Running:"))
-		case strings.HasPrefix(line, "Seconds_Behind_Master:"):
-			v := strings.TrimSpace(strings.TrimPrefix(line, "Seconds_Behind_Master:"))
-			if v == "NULL" || v == "" {
-				r.SecondsBehindMaster = 0
-			} else {
-				r.SecondsBehindMaster, _ = strconv.Atoi(v)
-			}
-		case strings.HasPrefix(line, "Last_IO_Error:"):
-			r.LastIOError = strings.TrimSpace(strings.TrimPrefix(line, "Last_IO_Error:"))
-		case strings.HasPrefix(line, "Last_SQL_Error:"):
-			r.LastSQLError = strings.TrimSpace(strings.TrimPrefix(line, "Last_SQL_Error:"))
-		case strings.HasPrefix(line, "Master_Host:"):
-			r.MasterHost = strings.TrimSpace(strings.TrimPrefix(line, "Master_Host:"))
-		}
+	r.IORunning = pickFirst(cols, row, "Slave_IO_Running", "Replica_IO_Running")
+	r.SQLRunning = pickFirst(cols, row, "Slave_SQL_Running", "Replica_SQL_Running")
+	r.LastIOError = pickFirst(cols, row, "Last_IO_Error")
+	r.LastSQLError = pickFirst(cols, row, "Last_SQL_Error")
+	r.MasterHost = pickFirst(cols, row, "Master_Host", "Source_Host")
+	if v := pickFirst(cols, row, "Seconds_Behind_Master", "Seconds_Behind_Source"); v != "" && v != "NULL" {
+		r.SecondsBehindMaster, _ = strconv.Atoi(v)
 	}
 
 	switch {
@@ -134,25 +116,23 @@ func collectMySQLSlave(ip, port string, creds config.Credentials, lagThreshold i
 	return res
 }
 
-// collectRedisReplication runs `INFO replication` and grades the node.
-// declaredRole is "master" or "slave" per env; the result records whether the
-// actual role matches.
-func collectRedisReplication(ip, port, password, declaredRole string, ioThreshold int) model.RedisReplicationStatus {
+// collectRedisReplication runs INFO replication via native driver and grades the node.
+func collectRedisReplication(ctx context.Context, ip, port, password, declaredRole string, ioThreshold int) model.RedisReplicationStatus {
 	r := model.RedisReplicationStatus{IP: ip, RoleConsistencyStatus: "ok"}
 
-	args := []string{"-h", ip, "-p", port}
-	if password != "" {
-		args = append(args, "-a", password, "--no-auth-warning")
-	}
-	args = append(args, "INFO", "replication")
-	out, err := exec.Command("redis-cli", args...).Output()
+	addr := net.JoinHostPort(ip, port)
+	rdb := newRedisClient(addr, password, 0)
+	defer rdb.Close()
+
+	out, err := rdb.Info(ctx, "replication").Result()
 	if err != nil {
-		r.Error = fmt.Sprintf("redis-cli error: %v", err)
+		r.Error = fmt.Sprintf("redis info error: %v", err)
+		r.ErrorClass = string(classifyRedis(err))
 		r.RoleConsistencyStatus = "N/A"
 		return r
 	}
 
-	info := parseRedisInfo(string(out))
+	info := parseRedisInfo(out)
 	r.Role = info["role"]
 
 	if r.Role != declaredRole {
@@ -187,7 +167,7 @@ func collectRedisReplication(ip, port, password, declaredRole string, ioThreshol
 
 // CrossCheckSentinelMaster annotates a SentinelClusterStatus with
 // MasterEnvMatch by comparing the discovered master IP against
-// cfg.RedisMasterIPs. Called from main.go after CollectRedisSentinel.
+// cfg.RedisMasterIPs.
 func CrossCheckSentinelMaster(s *model.SentinelClusterStatus, masterIPs []string) {
 	if s == nil {
 		return
@@ -200,7 +180,6 @@ func CrossCheckSentinelMaster(s *model.SentinelClusterStatus, masterIPs []string
 		s.MasterEnvMatch = "warn"
 		return
 	}
-	// DiscoveredMaster is "ip:port".
 	ip := s.DiscoveredMaster
 	if i := strings.LastIndex(ip, ":"); i > 0 {
 		ip = ip[:i]

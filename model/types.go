@@ -95,6 +95,7 @@ type ESCluster struct {
 	ActiveShardsPercent   float64  `json:"active_shards_percent_as_number"`
 	Nodes                 []ESNode `json:"nodes"`
 	Error                 string   `json:"error,omitempty"`
+	ErrorClass            string   `json:"error_class,omitempty"`
 }
 
 // MySQLNode represents a MySQL node's configuration and status.
@@ -144,10 +145,11 @@ type MySQLReplicationStatus struct {
 // MySQLMasterStatus captures master-side configuration sanity (currently just
 // read_only).
 type MySQLMasterStatus struct {
-	IP       string `json:"ip"`
-	ReadOnly bool   `json:"read_only"`
-	Status   string `json:"status"` // ok / warn
-	Error    string `json:"error,omitempty"`
+	IP         string `json:"ip"`
+	ReadOnly   bool   `json:"read_only"`
+	Status     string `json:"status"` // ok / warn
+	Error      string `json:"error,omitempty"`
+	ErrorClass string `json:"error_class,omitempty"`
 }
 
 // MySQLSlaveStatus pairs a slave node IP with its replication status.
@@ -155,6 +157,7 @@ type MySQLSlaveStatus struct {
 	IP          string                  `json:"ip"`
 	Replication *MySQLReplicationStatus `json:"replication,omitempty"`
 	Error       string                  `json:"error,omitempty"`
+	ErrorClass  string                  `json:"error_class,omitempty"`
 }
 
 // RedisReplicationStatus captures replication-related fields from `INFO replication`.
@@ -170,6 +173,7 @@ type RedisReplicationStatus struct {
 	RoleConsistencyStatus string `json:"role_consistency_status"` // ok / warn / N/A
 	LinkStatus            string `json:"link_status,omitempty"`   // ok / warn / critical / N/A (slave-only)
 	Error                 string `json:"error,omitempty"`
+	ErrorClass            string `json:"error_class,omitempty"`
 }
 
 // ReplicationReport aggregates all replication-related findings.
@@ -193,6 +197,7 @@ type RedisNode struct {
 	CeleryQueue     int    `json:"celery_queue"`
 	MonitorQueue    int    `json:"monitor_queue"`
 	Error           string `json:"error,omitempty"`
+	ErrorClass      string `json:"error_class,omitempty"`
 }
 
 // RedisCluster represents a Redis cluster instance (legacy, kept for compatibility).
@@ -204,10 +209,11 @@ type RedisCluster struct {
 
 // SentinelNodeStatus represents one Redis sentinel node's reachability.
 type SentinelNodeStatus struct {
-	IP        string `json:"ip"`
-	Port      string `json:"port"`
-	Reachable bool   `json:"reachable"`
-	Error     string `json:"error,omitempty"`
+	IP         string `json:"ip"`
+	Port       string `json:"port"`
+	Reachable  bool   `json:"reachable"`
+	Error      string `json:"error,omitempty"`
+	ErrorClass string `json:"error_class,omitempty"`
 }
 
 // SentinelClusterStatus represents the cluster-level state of a Redis Sentinel deployment.
@@ -221,6 +227,7 @@ type SentinelClusterStatus struct {
 	// present in Config.RedisMasterIPs. "ok" / "warn" / "N/A".
 	MasterEnvMatch string `json:"master_env_match,omitempty"`
 	Error          string `json:"error,omitempty"`
+	ErrorClass     string `json:"error_class,omitempty"`
 }
 
 // MongoMember represents a MongoDB replica set member.
@@ -235,9 +242,10 @@ type MongoMember struct {
 
 // MongoCluster represents a MongoDB cluster instance.
 type MongoCluster struct {
-	Instance string        `json:"instance"`
-	Members  []MongoMember `json:"members"`
-	Error    string        `json:"error,omitempty"`
+	Instance   string        `json:"instance"`
+	Members    []MongoMember `json:"members"`
+	Error      string        `json:"error,omitempty"`
+	ErrorClass string        `json:"error_class,omitempty"`
 }
 
 // RabbitMQAlarm represents a node alarm in RabbitMQ.
@@ -267,6 +275,7 @@ type RabbitMQStatus struct {
 	ExceedingQueues     []RabbitMQQueue `json:"queues_exceeding_message_threshold"`
 	NoConsumerQueues    []RabbitMQQueue `json:"queues_with_no_consumers"`
 	Error               string          `json:"error,omitempty"`
+	ErrorClass          string          `json:"error_class,omitempty"`
 }
 
 // CheckStatus represents the status of a rule check.
