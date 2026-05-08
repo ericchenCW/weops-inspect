@@ -59,8 +59,11 @@ func BuildRecoveryBody(report *model.InspectReport) string {
 		report.Timestamp, report.Summary.Total)
 }
 
-// Send composes and dispatches a single message via SMTP.
-func Send(cfg *Config, subject, body, attachmentPath string) error {
+// Send composes and dispatches a single message via SMTP. When htmlBody is
+// non-empty it is added as a text/html alternative alongside the plain text
+// body, producing a multipart/alternative payload (further nested under
+// multipart/mixed when an attachment is present).
+func Send(cfg *Config, subject, body, htmlBody, attachmentPath string) error {
 	msg := mail.NewMsg()
 	if err := msg.From(cfg.Email.From); err != nil {
 		return fmt.Errorf("set From: %w", err)
@@ -70,6 +73,9 @@ func Send(cfg *Config, subject, body, attachmentPath string) error {
 	}
 	msg.Subject(subject)
 	msg.SetBodyString(mail.TypeTextPlain, body)
+	if htmlBody != "" {
+		msg.AddAlternativeString(mail.TypeTextHTML, htmlBody)
+	}
 	if attachmentPath != "" {
 		msg.AttachFile(attachmentPath)
 	}
