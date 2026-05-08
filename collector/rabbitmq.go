@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"weops-inspect/config"
 	"weops-inspect/model"
@@ -34,13 +35,21 @@ func CollectRabbitMQ(ctx context.Context, cfg *config.Config) *model.RabbitMQSta
 	status := &model.RabbitMQStatus{}
 	target := net.JoinHostPort(host, port)
 
+	apiTimeout := cfg.RabbitMQAPITimeoutSec
+	if apiTimeout <= 0 {
+		apiTimeout = 60
+	}
 	probe := &rmqProbe{
 		host: host, port: port, user: user, pass: pass,
 		target: target, status: status,
 		backlogThreshold: cfg.Thresholds.RabbitMQQueueBacklog,
-		apiTimeoutSec:    cfg.RabbitMQAPITimeoutSec,
+		apiTimeoutSec:    apiTimeout,
 	}
-	RunProbe(ctx, probe)
+	// 4 个 endpoint 串行调用,各自最多 apiTimeout 秒;给框架一个略宽松的总 deadline,
+	// 避免 RunProbe 默认 5s 兜底 kill 掉 curl ("signal: killed")。
+	probeCtx, cancel := context.WithTimeout(ctx, time.Duration(apiTimeout*4+5)*time.Second)
+	defer cancel()
+	RunProbe(probeCtx, probe)
 	return status
 }
 
