@@ -49,48 +49,60 @@ type HostMetrics struct {
 }
 
 // ServiceModule represents a single sub-module's status.
+// RenderStatus / HealthzRenderStatus are filled by checker for HTML coloring;
+// collector MUST leave them empty.
 type ServiceModule struct {
-	Module     string `json:"module"`
-	Status     string `json:"status"`
-	Resolved   string `json:"resolved"`
-	HealthzAPI string `json:"healthz_api"`
-	MainPID    int    `json:"main_pid"`
-	StartTime  string `json:"start_time"`
-	Workers    int    `json:"workers"`
+	Module              string      `json:"module"`
+	Status              string      `json:"status"`
+	Resolved            string      `json:"resolved"`
+	HealthzAPI          string      `json:"healthz_api"`
+	MainPID             int         `json:"main_pid"`
+	StartTime           string      `json:"start_time"`
+	Workers             int         `json:"workers"`
+	RenderStatus        CheckStatus `json:"-"`
+	HealthzRenderStatus CheckStatus `json:"-"`
 }
 
 // ServiceStatus represents one BlueKing module's status on one host.
+// ExitedRenderStatus is filled by checker for the Docker exited cell.
 type ServiceStatus struct {
 	HostIP   string          `json:"host_ip"`
 	Module   string          `json:"module"`   // e.g. "paas", "cmdb"
 	Services []ServiceModule `json:"services"`
 	// Docker container info (for appo/appt)
-	ContainersUp     int `json:"containers_up,omitempty"`
-	ContainersExited int `json:"containers_exited,omitempty"`
-	Error            string `json:"error,omitempty"`
+	ContainersUp       int         `json:"containers_up,omitempty"`
+	ContainersExited   int         `json:"containers_exited,omitempty"`
+	ExitedRenderStatus CheckStatus `json:"-"`
+	Error              string      `json:"error,omitempty"`
 }
 
 // ESNode represents an Elasticsearch node's metrics.
+// HeapStatus / RAMStatus filled by checker for per-cell HTML coloring.
 type ESNode struct {
-	IP          string  `json:"ip"`
-	HeapPercent int     `json:"heap_percent"`
-	RAMPercent  int     `json:"ram_percent"`
-	CPU         int     `json:"cpu"`
-	Load1m      float64 `json:"load_1m"`
-	Load5m      float64 `json:"load_5m"`
-	Load15m     float64 `json:"load_15m"`
-	Role        string  `json:"role"`
+	IP          string      `json:"ip"`
+	HeapPercent int         `json:"heap_percent"`
+	RAMPercent  int         `json:"ram_percent"`
+	CPU         int         `json:"cpu"`
+	Load1m      float64     `json:"load_1m"`
+	Load5m      float64     `json:"load_5m"`
+	Load15m     float64     `json:"load_15m"`
+	Role        string      `json:"role"`
+	HeapStatus  CheckStatus `json:"-"`
+	RAMStatus   CheckStatus `json:"-"`
 }
 
 // ESNodeReach 描述单个 ES IP 在巡检瞬时的 9200 端口可达性,作为 ESCluster 的辅助字段。
-// Status ∈ {ok, unreachable}。
+// Status ∈ {ok, unreachable}。RenderStatus 由 checker 填写。
 type ESNodeReach struct {
-	IP     string `json:"ip"`
-	Status string `json:"status"`
-	Detail string `json:"detail,omitempty"`
+	IP           string      `json:"ip"`
+	Status       string      `json:"status"`
+	Detail       string      `json:"detail,omitempty"`
+	RenderStatus CheckStatus `json:"-"`
 }
 
 // ESCluster represents an Elasticsearch cluster's health and nodes.
+// HealthStatus colors the green/yellow/red cell; UnassignedStatus colors the
+// unassigned-shards cell; PendingStatus the pending-tasks cell.
 type ESCluster struct {
 	Instance              string        `json:"instance"`
 	ClusterName           string        `json:"cluster_name"`
@@ -106,6 +118,9 @@ type ESCluster struct {
 	NodeReachability      []ESNodeReach `json:"node_reachability,omitempty"`
 	Error                 string        `json:"error,omitempty"`
 	ErrorClass            string        `json:"error_class,omitempty"`
+	HealthStatus          CheckStatus   `json:"-"`
+	UnassignedStatus      CheckStatus   `json:"-"`
+	PendingStatus         CheckStatus   `json:"-"`
 }
 
 // MySQLNode represents a MySQL node's configuration and status.
@@ -194,20 +209,25 @@ type ReplicationReport struct {
 }
 
 // RedisNode represents a Redis node's metrics.
+// CeleryQueueStatus / MonitorQueueStatus / ErrorStatus are filled by checker
+// to color individual cells.
 type RedisNode struct {
-	IP              string `json:"ip"`
-	Role            string `json:"role"`
-	ClusterEnabled  string `json:"cluster_enabled"`
-	Version         string `json:"version"`
-	UsedMemory      string `json:"used_memory"`
-	MaxMemory       string `json:"max_memory"`
-	UptimeDays      string `json:"uptime_days"`
-	ConnectedClients string `json:"connected_clients"`
-	BlockedClients  string `json:"blocked_clients"`
-	CeleryQueue     int    `json:"celery_queue"`
-	MonitorQueue    int    `json:"monitor_queue"`
-	Error           string `json:"error,omitempty"`
-	ErrorClass      string `json:"error_class,omitempty"`
+	IP                  string      `json:"ip"`
+	Role                string      `json:"role"`
+	ClusterEnabled      string      `json:"cluster_enabled"`
+	Version             string      `json:"version"`
+	UsedMemory          string      `json:"used_memory"`
+	MaxMemory           string      `json:"max_memory"`
+	UptimeDays          string      `json:"uptime_days"`
+	ConnectedClients    string      `json:"connected_clients"`
+	BlockedClients      string      `json:"blocked_clients"`
+	CeleryQueue         int         `json:"celery_queue"`
+	MonitorQueue        int         `json:"monitor_queue"`
+	Error               string      `json:"error,omitempty"`
+	ErrorClass          string      `json:"error_class,omitempty"`
+	CeleryQueueStatus   CheckStatus `json:"-"`
+	MonitorQueueStatus  CheckStatus `json:"-"`
+	ErrorStatus         CheckStatus `json:"-"`
 }
 
 // RedisCluster represents a Redis cluster instance (legacy, kept for compatibility).
@@ -218,15 +238,18 @@ type RedisCluster struct {
 }
 
 // SentinelNodeStatus represents one Redis sentinel node's reachability.
+// RenderStatus is filled by checker for the "可达" cell.
 type SentinelNodeStatus struct {
-	IP         string `json:"ip"`
-	Port       string `json:"port"`
-	Reachable  bool   `json:"reachable"`
-	Error      string `json:"error,omitempty"`
-	ErrorClass string `json:"error_class,omitempty"`
+	IP           string      `json:"ip"`
+	Port         string      `json:"port"`
+	Reachable    bool        `json:"reachable"`
+	Error        string      `json:"error,omitempty"`
+	ErrorClass   string      `json:"error_class,omitempty"`
+	RenderStatus CheckStatus `json:"-"`
 }
 
 // SentinelClusterStatus represents the cluster-level state of a Redis Sentinel deployment.
+// MasterReachableStatus / MasterEnvMatchStatus / OverallStatus colored by checker.
 type SentinelClusterStatus struct {
 	MasterName       string               `json:"master_name"`
 	Sentinels        []SentinelNodeStatus `json:"sentinels"`
@@ -235,19 +258,24 @@ type SentinelClusterStatus struct {
 	Status           string               `json:"status"` // ok / warn / critical
 	// MasterEnvMatch reports whether the sentinel-discovered master IP is
 	// present in Config.RedisMasterIPs. "ok" / "warn" / "N/A".
-	MasterEnvMatch string `json:"master_env_match,omitempty"`
-	Error          string `json:"error,omitempty"`
-	ErrorClass     string `json:"error_class,omitempty"`
+	MasterEnvMatch         string      `json:"master_env_match,omitempty"`
+	Error                  string      `json:"error,omitempty"`
+	ErrorClass             string      `json:"error_class,omitempty"`
+	MasterReachableStatus  CheckStatus `json:"-"`
+	MasterEnvMatchStatus   CheckStatus `json:"-"`
+	OverallStatus          CheckStatus `json:"-"`
 }
 
 // MongoMember represents a MongoDB replica set member.
+// HealthStatus is filled by checker to color the health cell.
 type MongoMember struct {
-	Name           string `json:"name"`
-	Health         int    `json:"health"`
-	StateStr       string `json:"stateStr"`
-	Uptime         int64  `json:"uptime"`
-	SyncingTo      string `json:"syncingTo"`
-	SyncSourceHost string `json:"syncSourceHost"`
+	Name           string      `json:"name"`
+	Health         int         `json:"health"`
+	StateStr       string      `json:"stateStr"`
+	Uptime         int64       `json:"uptime"`
+	SyncingTo      string      `json:"syncingTo"`
+	SyncSourceHost string      `json:"syncSourceHost"`
+	HealthStatus   CheckStatus `json:"-"`
 }
 
 // MongoCluster represents a MongoDB cluster instance.
@@ -259,19 +287,25 @@ type MongoCluster struct {
 }
 
 // RabbitMQAlarm represents a node alarm in RabbitMQ.
+// MemStatus / DiskFreeStatus filled by checker.
 type RabbitMQAlarm struct {
-	Node          string `json:"node"`
-	MemAlarm      bool   `json:"mem_alarm"`
-	DiskFreeAlarm bool   `json:"disk_free_alarm"`
+	Node           string      `json:"node"`
+	MemAlarm       bool        `json:"mem_alarm"`
+	DiskFreeAlarm  bool        `json:"disk_free_alarm"`
+	MemStatus      CheckStatus `json:"-"`
+	DiskFreeStatus CheckStatus `json:"-"`
 }
 
 // RabbitMQQueue represents a problematic queue.
+// MessageStatus colors the message-count cell, ConsumerStatus the consumer cell.
 type RabbitMQQueue struct {
-	VHost        string `json:"vhost"`
-	Queue        string `json:"queue"`
-	MessageCount int    `json:"message_count"`
-	Consumers    int    `json:"consumers"`
-	Durable      bool   `json:"durable"`
+	VHost          string      `json:"vhost"`
+	Queue          string      `json:"queue"`
+	MessageCount   int         `json:"message_count"`
+	Consumers      int         `json:"consumers"`
+	Durable        bool        `json:"durable"`
+	MessageStatus  CheckStatus `json:"-"`
+	ConsumerStatus CheckStatus `json:"-"`
 }
 
 // RabbitMQVHostSummary aggregates queue stats for a single vhost.
@@ -283,6 +317,7 @@ type RabbitMQVHostSummary struct {
 }
 
 // RabbitMQStatus represents the RabbitMQ cluster status.
+// PartitionStatus / AbnormalConnStatus color the cluster-level cells.
 type RabbitMQStatus struct {
 	ClusterPartition    bool                   `json:"cluster_partition"`
 	Uptime              string                 `json:"uptime"`
@@ -296,14 +331,18 @@ type RabbitMQStatus struct {
 	QueuesError         string                 `json:"queues_error,omitempty"`
 	Error               string                 `json:"error,omitempty"`
 	ErrorClass          string                 `json:"error_class,omitempty"`
+	PartitionStatus     CheckStatus            `json:"-"`
+	AbnormalConnStatus  CheckStatus            `json:"-"`
 }
 
 // CheckStatus represents the status of a rule check.
 type CheckStatus string
 
 const (
-	StatusOK   CheckStatus = "ok"
-	StatusWarn CheckStatus = "warn"
+	StatusOK      CheckStatus = "ok"
+	StatusWarn    CheckStatus = "warn"
+	StatusUnknown CheckStatus = "unknown"
+	StatusNotice  CheckStatus = "notice"
 )
 
 // CheckResult represents the result of checking one field against a rule.
@@ -314,10 +353,12 @@ type CheckResult struct {
 }
 
 // CheckSummary holds aggregated rule check results.
+// Total counts OK + Warn + Unknown. Notice items are excluded entirely.
 type CheckSummary struct {
 	Total   int `json:"total"`
 	OK      int `json:"ok"`
 	Warn    int `json:"warn"`
+	Unknown int `json:"unknown"`
 }
 
 // HostCheckResult holds a host's metrics with its rule check results.
@@ -327,6 +368,7 @@ type HostCheckResult struct {
 }
 
 // InspectReport is the top-level report containing all inspection data.
+// AllChecks is the flat list used by notify; not serialized to JSON.
 type InspectReport struct {
 	Timestamp      string                      `json:"timestamp"`
 	Hosts          []HostCheckResult            `json:"hosts"`
@@ -340,14 +382,17 @@ type InspectReport struct {
 	Replication      *ReplicationReport         `json:"replication,omitempty"`
 	BKMonitorV3     *BKMonitorV3Section         `json:"bkmonitorv3,omitempty"`
 	Summary        CheckSummary                 `json:"summary"`
+	AllChecks      []CheckResult                `json:"-"`
 }
 
 // DependencyResult is a single module-dependency probe result.
+// RenderStatus colors the status cell.
 type DependencyResult struct {
-	Item     string `json:"item"`
-	Endpoint string `json:"endpoint"`
-	Status   string `json:"status"` // ok | fail | unreachable | skip
-	Detail   string `json:"detail,omitempty"`
+	Item         string      `json:"item"`
+	Endpoint     string      `json:"endpoint"`
+	Status       string      `json:"status"` // ok | fail | unreachable | skip
+	Detail       string      `json:"detail,omitempty"`
+	RenderStatus CheckStatus `json:"-"`
 }
 
 // BKMonitorV3Section holds bkmonitorv3-specific report content (currently the

@@ -4,13 +4,17 @@
         <div class="label">主机数量</div>
         <div class="value">{{len .Hosts}}</div>
     </div>
-    <div class="card {{if gt .Summary.Warn 0}}warn{{else}}ok{{end}}">
+    <div class="card {{warnCardClass .Summary.Warn}}">
         <div class="label">告警项</div>
         <div class="value">{{.Summary.Warn}}</div>
     </div>
     <div class="card ok">
         <div class="label">正常项</div>
         <div class="value">{{.Summary.OK}}</div>
+    </div>
+    <div class="card info">
+        <div class="label">未知项</div>
+        <div class="value">{{.Summary.Unknown}}</div>
     </div>
     <div class="card info">
         <div class="label">检查总数</div>

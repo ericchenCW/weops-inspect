@@ -25,8 +25,8 @@
             <tr>
                 <td>{{$hostIP}}</td>
                 <td>{{.Module}}</td>
-                <td class="{{if eq .Status "active"}}status-ok{{else}}status-warn{{end}}">{{.Status}}</td>
-                <td class="{{if eq .HealthzAPI "ok"}}status-ok{{else if eq .HealthzAPI "N/A"}}status-na{{else}}status-warn{{end}}">{{.HealthzAPI}}</td>
+                <td class="{{statusClass .RenderStatus}}">{{.Status}}</td>
+                <td class="{{statusClass .HealthzRenderStatus}}">{{.HealthzAPI}}</td>
                 <td>{{.MainPID}}</td>
                 <td>{{.StartTime}}</td>
                 <td>{{.Workers}}</td>
@@ -37,7 +37,7 @@
                 <td>{{$hostIP}}</td>
                 <td>Docker 容器</td>
                 <td class="status-ok">运行: {{.ContainersUp}}</td>
-                <td class="{{if gt .ContainersExited 0}}status-warn{{else}}status-ok{{end}}">退出: {{.ContainersExited}}</td>
+                <td class="{{statusClass .ExitedRenderStatus}}">退出: {{.ContainersExited}}</td>
                 <td colspan="3"></td>
             </tr>
             {{end}}

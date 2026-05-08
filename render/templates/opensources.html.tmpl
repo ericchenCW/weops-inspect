@@ -17,8 +17,8 @@
                 <td>{{.NumberOfNodes}}</td>
                 <td>{{.NumberOfDataNodes}}</td>
                 <td>{{.ActiveShards}}</td>
-                <td class="{{if gt .UnassignedShards 0}}status-warn{{end}}">{{.UnassignedShards}}</td>
-                <td>{{.PendingTasks}}</td>
+                <td class="{{statusClass .UnassignedStatus}}">{{.UnassignedShards}}</td>
+                <td class="{{statusClass .PendingStatus}}">{{.PendingTasks}}</td>
                 <td>{{printf "%.1f%%" .ActiveShardsPercent}}</td>
             </tr>
         </table>
@@ -29,8 +29,8 @@
             <tr>
                 <td>{{.IP}}</td>
                 <td>{{.Role}}</td>
-                <td class="{{if gt .HeapPercent 85}}status-warn{{end}}">{{.HeapPercent}}%</td>
-                <td class="{{if gt .RAMPercent 95}}status-warn{{end}}">{{.RAMPercent}}%</td>
+                <td class="{{statusClass .HeapStatus}}">{{.HeapPercent}}%</td>
+                <td class="{{statusClass .RAMStatus}}">{{.RAMPercent}}%</td>
                 <td>{{.CPU}}%</td>
                 <td>{{printf "%.2f" .Load1m}}</td>
                 <td>{{printf "%.2f" .Load5m}}</td>
@@ -47,7 +47,7 @@
             {{range .NodeReachability}}
             <tr>
                 <td>{{.IP}}</td>
-                <td class="{{if eq .Status "unreachable"}}status-warn{{end}}">{{.Status}}</td>
+                <td class="{{statusClass .RenderStatus}}">{{.Status}}</td>
                 <td>{{.Detail}}</td>
             </tr>
             {{end}}
@@ -108,9 +108,9 @@
                 <td>{{.UptimeDays}}</td>
                 <td>{{.ConnectedClients}}</td>
                 <td>{{.BlockedClients}}</td>
-                <td class="{{if gt .CeleryQueue 1000}}status-warn{{end}}">{{.CeleryQueue}}</td>
-                <td class="{{if gt .MonitorQueue 10000}}status-warn{{end}}">{{.MonitorQueue}}</td>
-                <td class="{{if .Error}}status-warn{{end}}">{{.Error}}</td>
+                <td class="{{statusClass .CeleryQueueStatus}}">{{.CeleryQueue}}</td>
+                <td class="{{statusClass .MonitorQueueStatus}}">{{.MonitorQueue}}</td>
+                <td class="{{statusClass .ErrorStatus}}">{{.Error}}</td>
             </tr>
             {{end}}
         </table>
@@ -131,9 +131,9 @@
             <tr>
                 <td>{{.RedisSentinel.MasterName}}</td>
                 <td>{{.RedisSentinel.DiscoveredMaster}}</td>
-                <td class="{{if .RedisSentinel.MasterReachable}}status-ok{{else}}status-warn{{end}}">{{if .RedisSentinel.MasterReachable}}是{{else}}否{{end}}</td>
-                <td class="{{if eq .RedisSentinel.MasterEnvMatch "ok"}}status-ok{{else if eq .RedisSentinel.MasterEnvMatch "warn"}}status-warn{{end}}">{{.RedisSentinel.MasterEnvMatch}}</td>
-                <td class="{{if eq .RedisSentinel.Status "ok"}}status-ok{{else}}status-warn{{end}}">{{.RedisSentinel.Status}}</td>
+                <td class="{{statusClass .RedisSentinel.MasterReachableStatus}}">{{boolLabel .RedisSentinel.MasterReachable "是" "否"}}</td>
+                <td class="{{statusClass .RedisSentinel.MasterEnvMatchStatus}}">{{.RedisSentinel.MasterEnvMatch}}</td>
+                <td class="{{statusClass .RedisSentinel.OverallStatus}}">{{.RedisSentinel.Status}}</td>
             </tr>
         </table>
         {{if .RedisSentinel.Sentinels}}
@@ -144,7 +144,7 @@
             <tr>
                 <td>{{.IP}}</td>
                 <td>{{.Port}}</td>
-                <td class="{{if .Reachable}}status-ok{{else}}status-warn{{end}}">{{if .Reachable}}是{{else}}否{{end}}</td>
+                <td class="{{statusClass .RenderStatus}}">{{boolLabel .Reachable "是" "否"}}</td>
                 <td>{{.Error}}</td>
             </tr>
             {{end}}
@@ -168,7 +168,7 @@
             {{range .Members}}
             <tr>
                 <td>{{.Name}}</td>
-                <td class="{{if eq .Health 1}}status-ok{{else}}status-warn{{end}}">{{if eq .Health 1}}健康{{else}}异常{{end}}</td>
+                <td class="{{statusClass .HealthStatus}}">{{mongoHealthLabel .Health}}</td>
                 <td>{{.StateStr}}</td>
                 <td>{{.Uptime}}</td>
                 <td>{{.SyncSourceHost}}</td>
@@ -192,10 +192,10 @@
         <table>
             <tr><th>集群分区</th><th>运行时间</th><th>连接数</th><th>异常连接</th><th>通道数</th></tr>
             <tr>
-                <td class="{{if .RabbitMQ.ClusterPartition}}status-warn{{else}}status-ok{{end}}">{{if .RabbitMQ.ClusterPartition}}存在分区{{else}}正常{{end}}</td>
+                <td class="{{statusClass .RabbitMQ.PartitionStatus}}">{{boolLabel .RabbitMQ.ClusterPartition "存在分区" "正常"}}</td>
                 <td>{{.RabbitMQ.Uptime}}</td>
                 <td>{{.RabbitMQ.TotalConnections}}</td>
-                <td class="{{if gt .RabbitMQ.AbnormalConnections 0}}status-warn{{end}}">{{.RabbitMQ.AbnormalConnections}}</td>
+                <td class="{{statusClass .RabbitMQ.AbnormalConnStatus}}">{{.RabbitMQ.AbnormalConnections}}</td>
                 <td>{{.RabbitMQ.TotalChannels}}</td>
             </tr>
         </table>
@@ -223,8 +223,8 @@
             {{range .RabbitMQ.NodeAlarms}}
             <tr>
                 <td>{{.Node}}</td>
-                <td class="{{if .MemAlarm}}status-warn{{else}}status-ok{{end}}">{{if .MemAlarm}}告警{{else}}正常{{end}}</td>
-                <td class="{{if .DiskFreeAlarm}}status-warn{{else}}status-ok{{end}}">{{if .DiskFreeAlarm}}告警{{else}}正常{{end}}</td>
+                <td class="{{statusClass .MemStatus}}">{{boolLabel .MemAlarm "告警" "正常"}}</td>
+                <td class="{{statusClass .DiskFreeStatus}}">{{boolLabel .DiskFreeAlarm "告警" "正常"}}</td>
             </tr>
             {{end}}
         </table>
@@ -237,7 +237,7 @@
             <tr>
                 <td>{{.VHost}}</td>
                 <td>{{.Queue}}</td>
-                <td class="status-warn">{{.MessageCount}}</td>
+                <td class="{{statusClass .MessageStatus}}">{{.MessageCount}}</td>
                 <td>{{.Consumers}}</td>
             </tr>
             {{end}}
@@ -252,7 +252,7 @@
                 <td>{{.VHost}}</td>
                 <td>{{.Queue}}</td>
                 <td>{{.MessageCount}}</td>
-                <td class="status-warn">{{.Consumers}}</td>
+                <td class="{{statusClass .ConsumerStatus}}">{{.Consumers}}</td>
             </tr>
             {{end}}
         </table>
@@ -274,8 +274,8 @@
             {{range .Replication.MySQLMasters}}
             <tr>
                 <td>{{.IP}}</td>
-                <td>{{if .ReadOnly}}ON{{else}}OFF{{end}}</td>
-                <td class="{{if eq .Status "ok"}}status-ok{{else}}status-warn{{end}}">{{.Status}}</td>
+                <td>{{boolLabel .ReadOnly "ON" "OFF"}}</td>
+                <td class="{{okClass .Status}}">{{.Status}}</td>
                 <td>{{.Error}}</td>
             </tr>
             {{end}}
@@ -290,11 +290,11 @@
             <tr>
                 <td>{{.IP}}</td>
                 {{if .Replication}}
-                <td class="{{if eq .Replication.IORunning "Yes"}}status-ok{{else}}status-warn{{end}}">{{.Replication.IORunning}}</td>
-                <td class="{{if eq .Replication.SQLRunning "Yes"}}status-ok{{else}}status-warn{{end}}">{{.Replication.SQLRunning}}</td>
+                <td class="{{yesClass .Replication.IORunning}}">{{.Replication.IORunning}}</td>
+                <td class="{{yesClass .Replication.SQLRunning}}">{{.Replication.SQLRunning}}</td>
                 <td>{{.Replication.SecondsBehindMaster}}</td>
                 <td>{{.Replication.MasterHost}}</td>
-                <td class="{{if eq .Replication.Status "ok"}}status-ok{{else}}status-warn{{end}}">{{.Replication.Status}}</td>
+                <td class="{{okClass .Replication.Status}}">{{.Replication.Status}}</td>
                 <td>{{.Replication.LastIOError}}{{if and .Replication.LastIOError .Replication.LastSQLError}} / {{end}}{{.Replication.LastSQLError}}</td>
                 {{else}}
                 <td colspan="6" class="status-warn">{{.Error}}</td>
@@ -312,10 +312,10 @@
             <tr>
                 <td>{{.IP}}</td>
                 <td>{{.Role}}</td>
-                <td class="{{if eq .RoleConsistencyStatus "ok"}}status-ok{{else}}status-warn{{end}}">{{.RoleConsistencyStatus}}</td>
+                <td class="{{okClass .RoleConsistencyStatus}}">{{.RoleConsistencyStatus}}</td>
                 <td>{{.MasterLinkStatus}}</td>
                 <td>{{.MasterLastIOSeconds}}</td>
-                <td class="{{if eq .LinkStatus "ok"}}status-ok{{else if eq .LinkStatus "N/A"}}{{else}}status-warn{{end}}">{{.LinkStatus}}</td>
+                <td class="{{linkStatusClass .LinkStatus}}">{{.LinkStatus}}</td>
             </tr>
             {{end}}
         </table>
@@ -335,7 +335,7 @@
             <tr>
                 <td>{{.Item}}</td>
                 <td>{{.Endpoint}}</td>
-                <td class="{{if eq .Status "ok"}}status-ok{{else if eq .Status "skip"}}{{else}}status-warn{{end}}">{{.Status}}</td>
+                <td class="{{depStatusClass .Status}}">{{.Status}}</td>
                 <td>{{.Detail}}</td>
             </tr>
             {{end}}
