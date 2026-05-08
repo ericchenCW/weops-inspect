@@ -35,6 +35,7 @@ func CollectRabbitMQ(ctx context.Context, cfg *config.Config) *model.RabbitMQSta
 	probe := &rmqProbe{
 		host: host, port: port, user: user, pass: pass,
 		target: target, status: status,
+		backlogThreshold: cfg.Thresholds.RabbitMQQueueBacklog,
 	}
 	RunProbe(ctx, probe)
 	return status
@@ -44,6 +45,7 @@ type rmqProbe struct {
 	host, port, user, pass string
 	target                 string
 	status                 *model.RabbitMQStatus
+	backlogThreshold       int
 }
 
 func (p *rmqProbe) Name() string { return "rabbitmq" }
@@ -107,18 +109,23 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 		var queues []map[string]interface{}
 		if json.Unmarshal(queuesJSON, &queues) == nil {
 			for _, q := range queues {
+				vhost := jsonStr(q["vhost"])
+				name := jsonStr(q["name"])
+				if vhost == "bk_usermgr" || strings.HasPrefix(name, "celeryev") {
+					continue
+				}
 				msgs := jsonInt(q["messages"])
 				consumers := jsonInt(q["consumers"])
 				queueInfo := model.RabbitMQQueue{
-					VHost:        jsonStr(q["vhost"]),
-					Queue:        jsonStr(q["name"]),
+					VHost:        vhost,
+					Queue:        name,
 					MessageCount: msgs,
 					Consumers:    consumers,
 				}
 				if v, ok := q["durable"].(bool); ok {
 					queueInfo.Durable = v
 				}
-				if msgs > 1000 {
+				if msgs >= p.backlogThreshold {
 					p.status.ExceedingQueues = append(p.status.ExceedingQueues, queueInfo)
 				}
 				if consumers == 0 && msgs > 0 {
