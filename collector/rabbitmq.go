@@ -8,6 +8,7 @@ import (
 	"net"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 
 	"weops-inspect/config"
@@ -37,6 +38,7 @@ func CollectRabbitMQ(ctx context.Context, cfg *config.Config) *model.RabbitMQSta
 		host: host, port: port, user: user, pass: pass,
 		target: target, status: status,
 		backlogThreshold: cfg.Thresholds.RabbitMQQueueBacklog,
+		apiTimeoutSec:    cfg.RabbitMQAPITimeoutSec,
 	}
 	RunProbe(ctx, probe)
 	return status
@@ -47,12 +49,13 @@ type rmqProbe struct {
 	target                 string
 	status                 *model.RabbitMQStatus
 	backlogThreshold       int
+	apiTimeoutSec          int
 }
 
 func (p *rmqProbe) Name() string { return "rabbitmq" }
 
 func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
-	if nodesJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "nodes"); err != nil {
+	if nodesJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "nodes", p.apiTimeoutSec); err != nil {
 		p.status.Error = err.Error()
 		p.status.ErrorClass = string(curlErrClass(err))
 		return ProbeResult{Target: p.target, Err: err, ErrClass: curlErrClass(err)}
@@ -86,7 +89,7 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 		}
 	}
 
-	if connsJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "connections"); err == nil && connsJSON != nil {
+	if connsJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "connections", p.apiTimeoutSec); err == nil && connsJSON != nil {
 		var conns []map[string]interface{}
 		if json.Unmarshal(connsJSON, &conns) == nil {
 			p.status.TotalConnections = len(conns)
@@ -99,14 +102,17 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 		}
 	}
 
-	if chansJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "channels"); err == nil && chansJSON != nil {
+	if chansJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "channels", p.apiTimeoutSec); err == nil && chansJSON != nil {
 		var chans []interface{}
 		if json.Unmarshal(chansJSON, &chans) == nil {
 			p.status.TotalChannels = len(chans)
 		}
 	}
 
-	if queuesJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "queues"); err == nil && queuesJSON != nil {
+	queuesJSON, qErr := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "queues", p.apiTimeoutSec)
+	if qErr != nil {
+		p.status.QueuesError = qErr.Error()
+	} else if queuesJSON != nil {
 		var queues []map[string]interface{}
 		if json.Unmarshal(queuesJSON, &queues) == nil {
 			summaryByVHost := map[string]*model.RabbitMQVHostSummary{}
@@ -158,13 +164,19 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 	return ProbeResult{Target: p.target}
 }
 
-func rmqAPI(ctx context.Context, host, port, user, pass, endpoint string) ([]byte, error) {
+func rmqAPI(ctx context.Context, host, port, user, pass, endpoint string, timeoutSec int) ([]byte, error) {
+	if timeoutSec <= 0 {
+		timeoutSec = 60
+	}
 	url := fmt.Sprintf("http://%s:%s/api/%s", host, port, endpoint)
 	authHeader := fmt.Sprintf("%s:%s", user, pass)
 
-	args := []string{"-s", "-S", "--max-time", "5", "-u", authHeader, "-H", "Accept: application/json", url}
+	args := []string{"-s", "-S", "--max-time", strconv.Itoa(timeoutSec), "-u", authHeader, "-H", "Accept: application/json", url}
 	out, err := exec.CommandContext(ctx, "curl", args...).Output()
 	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
+			return nil, fmt.Errorf("%s: %s", err, strings.TrimSpace(string(ee.Stderr)))
+		}
 		return nil, err
 	}
 	trimmed := strings.TrimSpace(string(out))

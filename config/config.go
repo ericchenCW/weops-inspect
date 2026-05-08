@@ -124,6 +124,10 @@ type Config struct {
 	SSHUseSudo  bool
 	SSHTimeout  int // seconds
 
+	// RabbitMQ Management API curl timeout (seconds). Applies to all /api/* calls.
+	// /api/queues on busy clusters can be slow; default 60s.
+	RabbitMQAPITimeoutSec int
+
 	// Output settings
 	OutputDir string
 
@@ -294,6 +298,12 @@ func Load(outputDir string) (*Config, error) {
 	c.SSHKeyPath = os.Getenv("INSPECT_SSH_KEY_PATH")
 	c.SSHUseSudo = parseBoolEnv("INSPECT_SSH_USE_SUDO", false)
 	c.SSHTimeout = 30
+
+	rmqAPITimeout, err := parseIntEnv("INSPECT_RABBITMQ_API_TIMEOUT_SEC", 60)
+	if err != nil {
+		return nil, err
+	}
+	c.RabbitMQAPITimeoutSec = rmqAPITimeout
 
 	// Mount paths. Default empty -> collect all real filesystems (see
 	// collector/host.go fs-type filtering). Set CHECK_MOUNT_PATH=/data:/var
