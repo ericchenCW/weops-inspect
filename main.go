@@ -10,6 +10,7 @@ import (
 	"weops-inspect/collector"
 	"weops-inspect/config"
 	"weops-inspect/model"
+	"weops-inspect/notify"
 	"weops-inspect/output"
 	sshclient "weops-inspect/ssh"
 )
@@ -91,11 +92,19 @@ func main() {
 
 	// Output
 	fmt.Fprintf(os.Stderr, "\n生成报告...\n")
-	if err := output.Write(report, cfg.OutputDir); err != nil {
+	htmlPath, err := output.Write(report, cfg.OutputDir)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "报告生成失败: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Fprintf(os.Stderr, "\n巡检完成! 共 %d 项检查, %d 正常, %d 告警\n",
 		report.Summary.Total, report.Summary.OK, report.Summary.Warn)
+
+	// Optional alert notification (skipped silently when no config or disabled).
+	if notifyCfg, err := notify.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "notify: 配置加载失败: %v\n", err)
+	} else if notifyCfg != nil {
+		notify.Process(notifyCfg, report, htmlPath)
+	}
 }
