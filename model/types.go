@@ -284,6 +284,7 @@ type RabbitMQStatus struct {
 	VHostSummary        []RabbitMQVHostSummary `json:"vhost_summary"`
 	ExceedingQueues     []RabbitMQQueue        `json:"queues_exceeding_message_threshold"`
 	NoConsumerQueues    []RabbitMQQueue        `json:"queues_with_no_consumers"`
+	QueuesError         string                 `json:"queues_error,omitempty"`
 	Error               string                 `json:"error,omitempty"`
 	ErrorClass          string                 `json:"error_class,omitempty"`
 }

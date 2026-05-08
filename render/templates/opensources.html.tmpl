@@ -186,6 +186,9 @@
                 <td>{{.RabbitMQ.TotalChannels}}</td>
             </tr>
         </table>
+        {{if .RabbitMQ.QueuesError}}
+        <p class="status-warn">queues 接口失败: {{.RabbitMQ.QueuesError}}</p>
+        {{end}}
         {{if .RabbitMQ.VHostSummary}}
         <h4 style="margin:12px 0 8px;">VHost 汇总</h4>
         <table>
