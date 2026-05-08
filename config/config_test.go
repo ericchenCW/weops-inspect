@@ -1,8 +1,93 @@
 package config
 
 import (
+	"os"
+	"reflect"
 	"testing"
 )
+
+// unsetEnv 在测试结束时恢复原值; 与 t.Setenv("") 不同, 它真正 LookupEnv 不可见。
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	prev, hadPrev := os.LookupEnv(key)
+	os.Unsetenv(key)
+	t.Cleanup(func() {
+		if hadPrev {
+			os.Setenv(key, prev)
+		} else {
+			os.Unsetenv(key)
+		}
+	})
+}
+
+func TestThresholds_Defaults(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	// 数值阈值 env 走 os.Getenv: ""=未设置走默认。
+	for _, k := range []string{
+		"INSPECT_CPU_THRESHOLD", "INSPECT_MEM_THRESHOLD",
+		"INSPECT_DISK_THRESHOLD", "INSPECT_INODE_THRESHOLD",
+		"INSPECT_MAX_OPEN_FILES",
+	} {
+		t.Setenv(k, "")
+	}
+	c, err := Load("/tmp")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Thresholds.CPUUsage != 95 {
+		t.Errorf("CPUUsage default = %v, want 95", c.Thresholds.CPUUsage)
+	}
+	if c.Thresholds.MemUsage != 95 {
+		t.Errorf("MemUsage default = %v, want 95", c.Thresholds.MemUsage)
+	}
+	if c.Thresholds.DiskUsage != 95 {
+		t.Errorf("DiskUsage default = %v, want 95", c.Thresholds.DiskUsage)
+	}
+	if c.Thresholds.InodeUsage != 95 {
+		t.Errorf("InodeUsage default = %v, want 95", c.Thresholds.InodeUsage)
+	}
+	if c.Thresholds.MaxOpenFiles != 65536 {
+		t.Errorf("MaxOpenFiles default = %v, want 65536", c.Thresholds.MaxOpenFiles)
+	}
+}
+
+func TestRabbitMQNoConsumerVHostBlacklist_DefaultUnset(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	unsetEnv(t, "INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST")
+	c, err := Load("/tmp")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"bk_bknodeman"}
+	if !reflect.DeepEqual(c.Thresholds.RabbitMQNoConsumerVHostBlacklist, want) {
+		t.Errorf("default blacklist = %v, want %v", c.Thresholds.RabbitMQNoConsumerVHostBlacklist, want)
+	}
+}
+
+func TestRabbitMQNoConsumerVHostBlacklist_EnvOverride(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	t.Setenv("INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST", "foo, bar ,baz")
+	c, err := Load("/tmp")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"foo", "bar", "baz"}
+	if !reflect.DeepEqual(c.Thresholds.RabbitMQNoConsumerVHostBlacklist, want) {
+		t.Errorf("env override = %v, want %v", c.Thresholds.RabbitMQNoConsumerVHostBlacklist, want)
+	}
+}
+
+func TestRabbitMQNoConsumerVHostBlacklist_EmptyDisablesBlacklist(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	t.Setenv("INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST", "")
+	c, err := Load("/tmp")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(c.Thresholds.RabbitMQNoConsumerVHostBlacklist) != 0 {
+		t.Errorf("empty env should disable blacklist, got %v", c.Thresholds.RabbitMQNoConsumerVHostBlacklist)
+	}
+}
 
 // withEnv 设置一组 env 并在测试结束时恢复。
 func withEnv(t *testing.T, kv map[string]string) {
