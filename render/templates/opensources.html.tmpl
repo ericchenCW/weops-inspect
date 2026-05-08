@@ -40,6 +40,19 @@
         </table>
         {{end}}
         {{end}}
+        {{if .NodeReachability}}
+        <table style="margin-top:12px;">
+            <tr><th colspan="3">节点可达性 (9200/tcp)</th></tr>
+            <tr><th>IP</th><th>状态</th><th>详情</th></tr>
+            {{range .NodeReachability}}
+            <tr>
+                <td>{{.IP}}</td>
+                <td class="{{if eq .Status "unreachable"}}status-warn{{end}}">{{.Status}}</td>
+                <td>{{.Detail}}</td>
+            </tr>
+            {{end}}
+        </table>
+        {{end}}
     </div>
 </div>
 {{end}}

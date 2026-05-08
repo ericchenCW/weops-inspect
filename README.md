@@ -37,6 +37,23 @@ INSPECT_DISK_INCLUDE_NFS=true
 > `disk: configured mount paths [...] did not match any of [...]` 形式的 warning，
 > 便于发现配置和实际挂载不匹配的情况。
 
+## bkmonitorv3 角色 IP 配置
+
+bkmonitorv3 的 4 个子角色(monitor / influxdb-proxy / transfer / unify-query)在
+生产中常被分散到不同主机部署。巡检会按角色分别在对应主机上探测 systemctl 与
+healthz,避免在没跑该角色的主机上误报 `not-found` / `unreachable`。
+
+| 环境变量                                      | 含义                                               |
+|-----------------------------------------------|----------------------------------------------------|
+| `BK_MONITORV3_MONITOR_IP_COMMA`               | bk-monitor (supervisord) 部署主机                  |
+| `BK_MONITORV3_INFLUXDB_PROXY_IP_COMMA`        | bk-influxdb-proxy 部署主机                         |
+| `BK_MONITORV3_TRANSFER_IP_COMMA`              | bk-transfer 部署主机                               |
+| `BK_MONITORV3_UNIFY_QUERY_IP_COMMA`           | bk-unify-query 部署主机                            |
+| `BK_MONITORV3_IP_COMMA`(legacy / 兼容)       | 任一角色变量为空时回退到此 IP 列表                 |
+
+`ingester` 角色不采集。仅设 `BK_MONITORV3_IP_COMMA` 时,4 个角色都按它的 IP 列表
+采集,等价于本特性上线之前的行为。
+
 ## 邮件告警通知
 
 巡检结束后可选地把告警情况通过邮件推送给运维。配置文件位置：

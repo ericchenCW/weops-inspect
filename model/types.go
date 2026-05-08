@@ -82,21 +82,30 @@ type ESNode struct {
 	Role        string  `json:"role"`
 }
 
+// ESNodeReach 描述单个 ES IP 在巡检瞬时的 9200 端口可达性,作为 ESCluster 的辅助字段。
+// Status ∈ {ok, unreachable}。
+type ESNodeReach struct {
+	IP     string `json:"ip"`
+	Status string `json:"status"`
+	Detail string `json:"detail,omitempty"`
+}
+
 // ESCluster represents an Elasticsearch cluster's health and nodes.
 type ESCluster struct {
-	Instance              string   `json:"instance"`
-	ClusterName           string   `json:"cluster_name"`
-	Status                string   `json:"status"` // green/yellow/red
-	NumberOfNodes         int      `json:"number_of_nodes"`
-	NumberOfDataNodes     int      `json:"number_of_data_nodes"`
-	ActivePrimaryShards   int      `json:"active_primary_shards"`
-	ActiveShards          int      `json:"active_shards"`
-	UnassignedShards      int      `json:"unassigned_shards"`
-	PendingTasks          int      `json:"number_of_pending_tasks"`
-	ActiveShardsPercent   float64  `json:"active_shards_percent_as_number"`
-	Nodes                 []ESNode `json:"nodes"`
-	Error                 string   `json:"error,omitempty"`
-	ErrorClass            string   `json:"error_class,omitempty"`
+	Instance              string        `json:"instance"`
+	ClusterName           string        `json:"cluster_name"`
+	Status                string        `json:"status"` // green/yellow/red
+	NumberOfNodes         int           `json:"number_of_nodes"`
+	NumberOfDataNodes     int           `json:"number_of_data_nodes"`
+	ActivePrimaryShards   int           `json:"active_primary_shards"`
+	ActiveShards          int           `json:"active_shards"`
+	UnassignedShards      int           `json:"unassigned_shards"`
+	PendingTasks          int           `json:"number_of_pending_tasks"`
+	ActiveShardsPercent   float64       `json:"active_shards_percent_as_number"`
+	Nodes                 []ESNode      `json:"nodes"`
+	NodeReachability      []ESNodeReach `json:"node_reachability,omitempty"`
+	Error                 string        `json:"error,omitempty"`
+	ErrorClass            string        `json:"error_class,omitempty"`
 }
 
 // MySQLNode represents a MySQL node's configuration and status.
