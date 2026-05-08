@@ -3,6 +3,7 @@ package model
 // DiskUsage represents disk or inode usage for a mount point.
 type DiskUsage struct {
 	MountPoint string  `json:"mount_point"`
+	FsType     string  `json:"fs_type,omitempty"`
 	Usage      string  `json:"usage"`
 	UsageFloat float64 `json:"-"` // parsed numeric value for rule checking
 }

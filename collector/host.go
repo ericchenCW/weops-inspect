@@ -12,10 +12,15 @@ import (
 )
 
 // hostBatchCmd is the one-shot command that collects everything except CPU (which needs two samples).
+//
+// df uses -P (POSIX, single-line per entry) and -T (filesystem type column),
+// so the parser can rely on a fixed 7-column layout: Filesystem Type Size
+// Used Avail Use% Mounted-on. Long LVM/NFS device names no longer wrap onto
+// a second line.
 const hostBatchCmd = `echo "===LOADAVG==="; cat /proc/loadavg
 echo "===FREE==="; free -b
-echo "===DF==="; df -h
-echo "===DFI==="; df -i
+echo "===DF==="; df -ThP
+echo "===DFI==="; df -iPT
 echo "===ULIMIT==="; ulimit -n
 echo "===PROCS==="; ps -eLf 2>/dev/null | wc -l
 echo "===NTPD==="; out=$(systemctl is-active ntpd 2>/dev/null); echo "${out:-N/A}"
@@ -35,7 +40,7 @@ echo "===DMIDECODE==="; dmidecode -s system-manufacturer 2>/dev/null || echo "N/
 const cpuStatCmd = `cat /proc/stat | head -1`
 
 // CollectAllHosts collects host metrics from all hosts concurrently using two-phase CPU sampling.
-func CollectAllHosts(client *sshclient.Client, hosts []string, mountPaths string) []model.HostMetrics {
+func CollectAllHosts(client *sshclient.Client, hosts []string, mountPaths string, diskIncludeNFS bool) []model.HostMetrics {
 	n := len(hosts)
 	results := make([]model.HostMetrics, n)
 
@@ -72,7 +77,7 @@ func CollectAllHosts(client *sshclient.Client, hosts []string, mountPaths string
 			defer wg2.Done()
 			cmd := cpuStatCmd + "; " + hostBatchCmd
 			out, _ := client.Run(ip, cmd)
-			results[idx] = parseHostOutput(ip, cpuStat1[idx], out, mountPaths)
+			results[idx] = parseHostOutput(ip, cpuStat1[idx], out, mountPaths, diskIncludeNFS)
 		}(i, host)
 	}
 	wg2.Wait()
@@ -80,7 +85,7 @@ func CollectAllHosts(client *sshclient.Client, hosts []string, mountPaths string
 	return results
 }
 
-func parseHostOutput(ip, cpuStat1, rawOutput, mountPaths string) model.HostMetrics {
+func parseHostOutput(ip, cpuStat1, rawOutput, mountPaths string, diskIncludeNFS bool) model.HostMetrics {
 	m := model.HostMetrics{IP: ip}
 
 	// Split raw output: first line is cpu stat2, rest is batch output
@@ -114,13 +119,17 @@ func parseHostOutput(ip, cpuStat1, rawOutput, mountPaths string) model.HostMetri
 	}
 
 	// Disk usage
-	if s, ok := sections["DF"]; ok {
-		m.DiskUsage = parseDiskUsage(s, mountPaths)
+	var dfMounts []string // all mount points seen in df output (for warning context)
+	if s, ok := sections["DF"]; ok && strings.TrimSpace(s) != "" {
+		m.DiskUsage, dfMounts = parseDiskUsage(s, mountPaths, diskIncludeNFS)
+		if len(m.DiskUsage) == 0 {
+			m.Error = appendDiskWarning(m.Error, mountPaths, dfMounts)
+		}
 	}
 
-	// Inode usage
-	if s, ok := sections["DFI"]; ok {
-		m.InodeUsage = parseDiskUsage(s, mountPaths)
+	// Inode usage (uses the same filtering rules)
+	if s, ok := sections["DFI"]; ok && strings.TrimSpace(s) != "" {
+		m.InodeUsage, _ = parseDiskUsage(s, mountPaths, diskIncludeNFS)
 	}
 
 	// ulimit
@@ -290,37 +299,122 @@ func parseFree(output string) (memUsage, swapUsage float64) {
 	return
 }
 
-// parseDiskUsage parses df output for specific mount points.
-func parseDiskUsage(output, mountPaths string) []model.DiskUsage {
-	paths := strings.Split(mountPaths, ":")
-	pathSet := make(map[string]bool)
-	for _, p := range paths {
+// diskFsBlocklist lists pseudo / virtual filesystems that are never useful
+// to monitor for usage. Always excluded, even when explicitly listed in
+// CHECK_MOUNT_PATH (defends against accidental misconfiguration).
+var diskFsBlocklist = map[string]bool{
+	"tmpfs": true, "devtmpfs": true, "overlay": true, "overlayfs": true,
+	"squashfs": true, "shm": true, "proc": true, "sysfs": true,
+	"cgroup": true, "cgroup2": true, "autofs": true, "binfmt_misc": true,
+	"mqueue": true, "pstore": true, "debugfs": true, "tracefs": true,
+	"ramfs": true, "rpc_pipefs": true, "fusectl": true, "configfs": true,
+	"securityfs": true, "hugetlbfs": true, "fuse.lxcfs": true,
+	"fuse.gvfsd-fuse": true, "devpts": true, "nsfs": true,
+}
+
+// diskFsAllowlist lists "real" persistent filesystems collected by default.
+// vfat is included so /boot/efi-style firmware partitions get monitored.
+var diskFsAllowlist = map[string]bool{
+	"xfs": true, "ext2": true, "ext3": true, "ext4": true,
+	"btrfs": true, "zfs": true, "f2fs": true, "ufs": true,
+	"jfs": true, "reiserfs": true, "vfat": true,
+}
+
+// diskFsNFS lists network filesystems gated behind INSPECT_DISK_INCLUDE_NFS.
+var diskFsNFS = map[string]bool{
+	"nfs": true, "nfs4": true, "cifs": true, "smbfs": true, "smb3": true,
+}
+
+// shouldCollectFs decides whether a filesystem of the given type should be
+// collected in the default (CheckMountPath empty) flow. Priority:
+// blocklist > NFS gate > allowlist.
+func shouldCollectFs(fsType string, includeNFS bool) bool {
+	if diskFsBlocklist[fsType] {
+		return false
+	}
+	if diskFsNFS[fsType] {
+		return includeNFS
+	}
+	return diskFsAllowlist[fsType]
+}
+
+// parseDiskUsage parses `df -ThP` (or `df -iPT`) output. POSIX format gives
+// a fixed 7-column layout: Filesystem Type Size Used Avail Use% Mounted-on.
+//
+// When mountPaths is non-empty, only entries with mount points exactly
+// matching one of the colon-separated paths are returned (legacy semantics),
+// minus any blocklisted fs types. When empty, the fs allowlist/blocklist
+// plus the NFS gate decide.
+//
+// Returns the filtered DiskUsage entries plus the full list of mount points
+// seen in the input (used for the "did not match" warning).
+func parseDiskUsage(output, mountPaths string, includeNFS bool) ([]model.DiskUsage, []string) {
+	explicitPaths := make(map[string]bool)
+	for _, p := range strings.Split(mountPaths, ":") {
 		p = strings.TrimSpace(p)
 		if p != "" {
-			pathSet[p] = true
+			explicitPaths[p] = true
 		}
 	}
+	useExplicit := len(explicitPaths) > 0
 
 	var results []model.DiskUsage
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 6 {
+	var seenMounts []string
+	for i, line := range strings.Split(output, "\n") {
+		// Skip the header line emitted by df.
+		if i == 0 && strings.HasPrefix(strings.TrimSpace(line), "Filesystem") {
 			continue
 		}
-		mountPoint := fields[len(fields)-1]
-		if pathSet[mountPoint] {
-			usage := fields[len(fields)-2] // e.g. "34%"
-			du := model.DiskUsage{
-				MountPoint: mountPoint,
-				Usage:      usage,
-			}
-			// Parse numeric for rule checking
-			numStr := strings.TrimSuffix(usage, "%")
-			du.UsageFloat, _ = strconv.ParseFloat(numStr, 64)
-			results = append(results, du)
+		fields := strings.Fields(line)
+		if len(fields) < 7 {
+			continue
 		}
+		// Layout: 0 Filesystem | 1 Type | 2 Size | 3 Used | 4 Avail | 5 Use% | 6 Mounted-on
+		fsType := fields[1]
+		usage := fields[5] // e.g. "34%" or "IUse%" value
+		mountPoint := strings.Join(fields[6:], " ") // tolerate spaces in mount path
+		seenMounts = append(seenMounts, mountPoint)
+
+		// Blocklist always wins.
+		if diskFsBlocklist[fsType] {
+			continue
+		}
+
+		if useExplicit {
+			if !explicitPaths[mountPoint] {
+				continue
+			}
+		} else {
+			if !shouldCollectFs(fsType, includeNFS) {
+				continue
+			}
+		}
+
+		du := model.DiskUsage{
+			MountPoint: mountPoint,
+			FsType:     fsType,
+			Usage:      usage,
+		}
+		du.UsageFloat, _ = strconv.ParseFloat(strings.TrimSuffix(usage, "%"), 64)
+		results = append(results, du)
 	}
-	return results
+	return results, seenMounts
+}
+
+// appendDiskWarning composes a human-readable note when df returned data but
+// nothing survived filtering. Kept separate from SSH errors (which are set
+// before parseHostOutput runs and short-circuit it).
+func appendDiskWarning(existing, mountPaths string, seenMounts []string) string {
+	var msg string
+	if strings.TrimSpace(mountPaths) != "" {
+		msg = fmt.Sprintf("disk: configured mount paths [%s] did not match any of %v", mountPaths, seenMounts)
+	} else {
+		msg = "disk: no real filesystem matched (try INSPECT_DISK_INCLUDE_NFS=true if this host only has NFS mounts)"
+	}
+	if existing == "" {
+		return msg
+	}
+	return existing + "; " + msg
 }
 
 // parseSSOutput parses `ss -s` output for TCP connection counts.
