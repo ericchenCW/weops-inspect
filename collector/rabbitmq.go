@@ -64,7 +64,7 @@ type rmqProbe struct {
 func (p *rmqProbe) Name() string { return "rabbitmq" }
 
 func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
-	if nodesJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "nodes", p.apiTimeoutSec); err != nil {
+	if nodesJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "nodes?columns=name,mem_alarm,disk_free_alarm,partitions,uptime", p.apiTimeoutSec); err != nil {
 		p.status.Error = err.Error()
 		p.status.ErrorClass = string(curlErrClass(err))
 		return ProbeResult{Target: p.target, Err: err, ErrClass: curlErrClass(err)}
@@ -98,7 +98,7 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 		}
 	}
 
-	if connsJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "connections", p.apiTimeoutSec); err == nil && connsJSON != nil {
+	if connsJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "connections?columns=state", p.apiTimeoutSec); err == nil && connsJSON != nil {
 		var conns []map[string]interface{}
 		if json.Unmarshal(connsJSON, &conns) == nil {
 			p.status.TotalConnections = len(conns)
@@ -111,14 +111,14 @@ func (p *rmqProbe) Run(ctx context.Context) ProbeResult {
 		}
 	}
 
-	if chansJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "channels", p.apiTimeoutSec); err == nil && chansJSON != nil {
+	if chansJSON, err := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "channels?columns=name", p.apiTimeoutSec); err == nil && chansJSON != nil {
 		var chans []interface{}
 		if json.Unmarshal(chansJSON, &chans) == nil {
 			p.status.TotalChannels = len(chans)
 		}
 	}
 
-	queuesJSON, qErr := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "queues", p.apiTimeoutSec)
+	queuesJSON, qErr := rmqAPI(ctx, p.host, p.port, p.user, p.pass, "queues?disable_stats=true&enable_queue_totals=true&columns=name,vhost,messages,consumers,durable", p.apiTimeoutSec)
 	if qErr != nil {
 		p.status.QueuesError = qErr.Error()
 	} else if queuesJSON != nil {
