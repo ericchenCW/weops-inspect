@@ -1,18 +1,14 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "已存在的 Git tag (如 v1.2.3)"
-        required: true
-        type: string
+  push:
+    tags: ['*']
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ inputs.tag }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -23,8 +19,6 @@ jobs:
         goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag }}
 
       - uses: actions/setup-go@v5
         with:
@@ -37,7 +31,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           go build -trimpath \
-            -ldflags "-s -w -X main.version=${{ inputs.tag }}" \
+            -ldflags "-s -w -X main.version=${{ github.ref_name }}" \
             -o weops-inspect-linux-${{ matrix.goarch }} .
 
       - uses: actions/upload-artifact@v4
@@ -59,7 +53,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if ! gh release view "$TAG" >/dev/null 2>&1; then
