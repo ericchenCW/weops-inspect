@@ -51,6 +51,71 @@ func TestThresholds_Defaults(t *testing.T) {
 	}
 }
 
+func TestNoticeThresholds_Defaults(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	for _, k := range []string{
+		"INSPECT_ES_HEAP_THRESHOLD", "INSPECT_ES_RAM_THRESHOLD",
+		"INSPECT_ES_UNASSIGNED_SHARDS_THRESHOLD",
+		"INSPECT_REDIS_CELERY_QUEUE_THRESHOLD", "INSPECT_REDIS_MONITOR_QUEUE_THRESHOLD",
+		"INSPECT_DOCKER_EXITED_THRESHOLD",
+	} {
+		unsetEnv(t, k)
+	}
+	c, err := Load("/tmp")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cases := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{"ESHeapPercent", c.Thresholds.ESHeapPercent, 85},
+		{"ESRAMPercent", c.Thresholds.ESRAMPercent, 95},
+		{"ESUnassignedShards", c.Thresholds.ESUnassignedShards, 0},
+		{"RedisCeleryQueue", c.Thresholds.RedisCeleryQueue, 1000},
+		{"RedisMonitorQueue", c.Thresholds.RedisMonitorQueue, 10000},
+		{"ServiceContainersExited", c.Thresholds.ServiceContainersExited, 0},
+	}
+	for _, c := range cases {
+		if c.got != c.want {
+			t.Errorf("%s default = %d, want %d", c.name, c.got, c.want)
+		}
+	}
+}
+
+func TestNoticeThresholds_EnvOverride(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	t.Setenv("INSPECT_ES_HEAP_THRESHOLD", "90")
+	t.Setenv("INSPECT_ES_RAM_THRESHOLD", "98")
+	t.Setenv("INSPECT_REDIS_CELERY_QUEUE_THRESHOLD", "5000")
+	t.Setenv("INSPECT_DOCKER_EXITED_THRESHOLD", "5")
+	c, err := Load("/tmp")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Thresholds.ESHeapPercent != 90 {
+		t.Errorf("ESHeapPercent = %d, want 90", c.Thresholds.ESHeapPercent)
+	}
+	if c.Thresholds.ESRAMPercent != 98 {
+		t.Errorf("ESRAMPercent = %d, want 98", c.Thresholds.ESRAMPercent)
+	}
+	if c.Thresholds.RedisCeleryQueue != 5000 {
+		t.Errorf("RedisCeleryQueue = %d, want 5000", c.Thresholds.RedisCeleryQueue)
+	}
+	if c.Thresholds.ServiceContainersExited != 5 {
+		t.Errorf("ServiceContainersExited = %d, want 5", c.Thresholds.ServiceContainersExited)
+	}
+}
+
+func TestNoticeThresholds_InvalidNumber(t *testing.T) {
+	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
+	t.Setenv("INSPECT_ES_HEAP_THRESHOLD", "not-a-number")
+	if _, err := Load("/tmp"); err == nil {
+		t.Fatal("Load should fail on invalid threshold")
+	}
+}
+
 func TestRabbitMQNoConsumerVHostBlacklist_DefaultUnset(t *testing.T) {
 	t.Setenv("BK_PAAS_IP_COMMA", "10.0.0.1")
 	unsetEnv(t, "INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST")

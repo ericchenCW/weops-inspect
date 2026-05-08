@@ -25,11 +25,13 @@ func BuildRecoverySubject(s model.CheckSummary) string {
 }
 
 // BuildAlertBody renders a plain-text alert body listing all warn items.
+// Unknown items are reflected only in the summary line; details are not listed
+// (Notice items don't reach this function at all).
 func BuildAlertBody(report *model.InspectReport, items []AlertItem) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[WeOps 巡检告警] %s\n", report.Timestamp)
-	fmt.Fprintf(&b, "Summary: 共 %d 项检查，%d 正常，%d 告警\n\n",
-		report.Summary.Total, report.Summary.OK, report.Summary.Warn)
+	fmt.Fprintf(&b, "Summary: 共 %d 项检查，%d 正常，%d 告警，%d 未知\n\n",
+		report.Summary.Total, report.Summary.OK, report.Summary.Warn, report.Summary.Unknown)
 
 	b.WriteString("告警明细:\n")
 	sorted := make([]AlertItem, len(items))

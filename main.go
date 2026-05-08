@@ -73,13 +73,17 @@ func main() {
 	serviceResults := collector.CollectAllServices(sshClient, cfg)
 	report.Services = serviceResults
 
-	// Check service status rules
-	for _, statuses := range serviceResults {
-		for _, s := range statuses {
-			for _, sm := range s.Services {
-				checks := checker.CheckService(sm)
-				allChecks = append(allChecks, checks...)
+	// Check service status rules. Iterate by index so that backfilled
+	// RenderStatus / HealthzRenderStatus / ExitedRenderStatus persist for
+	// template rendering.
+	for moduleKey, statuses := range serviceResults {
+		for i := range statuses {
+			s := &statuses[i]
+			allChecks = append(allChecks, checker.CheckServiceCollectError(s)...)
+			for j := range s.Services {
+				allChecks = append(allChecks, checker.CheckService(&s.Services[j], s.HostIP, moduleKey)...)
 			}
+			allChecks = append(allChecks, checker.CheckServiceContainers(s, cfg.Thresholds)...)
 		}
 	}
 
@@ -98,11 +102,19 @@ func main() {
 		report.BKMonitorV3 = &model.BKMonitorV3Section{Dependencies: deps}
 	}
 
-	// Replication checks (no-op when Replication is nil)
+	// Component-level checks (each Check* mutates the report struct in place to
+	// backfill render statuses, then returns CheckResults for Summary/notify).
+	allChecks = append(allChecks, checker.CheckES(report.ES, cfg.Thresholds)...)
+	allChecks = append(allChecks, checker.CheckRedis(report.RedisStandalone, cfg.Thresholds)...)
+	allChecks = append(allChecks, checker.CheckRedisSentinel(report.RedisSentinel)...)
+	allChecks = append(allChecks, checker.CheckMongo(report.MongoDB)...)
+	allChecks = append(allChecks, checker.CheckRabbitMQ(report.RabbitMQ)...)
+	allChecks = append(allChecks, checker.CheckBKDeps(report.BKMonitorV3)...)
 	allChecks = append(allChecks, checker.CheckReplication(report.Replication)...)
 
 	// Summary
 	report.Summary = checker.Summarize(allChecks)
+	report.AllChecks = allChecks
 
 	// Output
 	fmt.Fprintf(os.Stderr, "\n生成报告...\n")
@@ -112,8 +124,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "\n巡检完成! 共 %d 项检查, %d 正常, %d 告警\n",
-		report.Summary.Total, report.Summary.OK, report.Summary.Warn)
+	fmt.Fprintf(os.Stderr, "\n巡检完成! 共 %d 项检查, %d 正常, %d 告警, %d 未知\n",
+		report.Summary.Total, report.Summary.OK, report.Summary.Warn, report.Summary.Unknown)
 
 	// Optional alert notification (skipped silently when no config or disabled).
 	if notifyCfg, err := notify.Load(); err != nil {

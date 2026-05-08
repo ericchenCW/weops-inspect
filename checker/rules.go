@@ -101,33 +101,84 @@ func CheckHost(h model.HostMetrics, thresholds config.Thresholds) []model.CheckR
 	return results
 }
 
-// CheckService checks service status fields against expected values.
-func CheckService(sm model.ServiceModule) []model.CheckResult {
+// CheckService checks service status fields against expected values and
+// backfills RenderStatus / HealthzRenderStatus on the module for HTML coloring.
+// An empty Status (sub-module not registered on the host) yields a single
+// Unknown CheckResult.
+func CheckService(sm *model.ServiceModule, hostIP, moduleKey string) []model.CheckResult {
 	var results []model.CheckResult
+	prefix := "service." + moduleKey + "/" + sm.Module + "."
 
-	// Status check — empty Status means the sub-module opted out (SkipStatusCheck).
-	if sm.Status != "" {
-		status := model.StatusOK
-		if sm.Status != "active" {
-			status = model.StatusWarn
-		}
+	// Status check.
+	switch sm.Status {
+	case "":
+		sm.RenderStatus = model.StatusUnknown
 		results = append(results, model.CheckResult{
-			Field: "status", Value: sm.Status, Status: status,
+			Field:  prefix + "status", Value: "(empty)", Status: model.StatusUnknown,
+		})
+	case "active":
+		sm.RenderStatus = model.StatusOK
+		results = append(results, model.CheckResult{
+			Field: prefix + "status", Value: sm.Status, Status: model.StatusOK,
+		})
+	default:
+		sm.RenderStatus = model.StatusWarn
+		results = append(results, model.CheckResult{
+			Field: prefix + "status", Value: sm.Status, Status: model.StatusWarn,
 		})
 	}
 
-	// Healthz check
-	if sm.HealthzAPI != "N/A" {
-		hzStatus := model.StatusOK
-		if sm.HealthzAPI != "ok" {
-			hzStatus = model.StatusWarn
-		}
+	// Healthz check (skip when N/A).
+	if sm.HealthzAPI == "" {
+		sm.HealthzRenderStatus = ""
+	} else if sm.HealthzAPI == "N/A" {
+		sm.HealthzRenderStatus = ""
+	} else if sm.HealthzAPI == "ok" {
+		sm.HealthzRenderStatus = model.StatusOK
 		results = append(results, model.CheckResult{
-			Field: "healthz_api", Value: sm.HealthzAPI, Status: hzStatus,
+			Field: prefix + "healthz", Value: sm.HealthzAPI, Status: model.StatusOK,
+		})
+	} else {
+		sm.HealthzRenderStatus = model.StatusWarn
+		results = append(results, model.CheckResult{
+			Field: prefix + "healthz", Value: sm.HealthzAPI, Status: model.StatusWarn,
 		})
 	}
 
+	_ = hostIP // currently unused in field (host-scoped CheckResult would duplicate hostIP);
+	// host context is attached at notify layer via the surrounding ServiceStatus.
 	return results
+}
+
+// CheckServiceContainers handles per-host Docker container counts as a Notice
+// when ContainersExited exceeds the threshold. ContainersUp is informational.
+func CheckServiceContainers(s *model.ServiceStatus, t config.Thresholds) []model.CheckResult {
+	if s.ContainersUp == 0 && s.ContainersExited == 0 {
+		return nil
+	}
+	if s.ContainersExited > t.ServiceContainersExited {
+		s.ExitedRenderStatus = model.StatusNotice
+		return []model.CheckResult{{
+			Field:  "service." + s.Module + ".docker.exited",
+			Value:  fmt.Sprintf("%d", s.ContainersExited),
+			Status: model.StatusNotice,
+		}}
+	}
+	s.ExitedRenderStatus = model.StatusOK
+	return nil
+}
+
+// CheckServiceCollectError reports a Notice when a service-section probe failed
+// (e.g. SSH unreachable or systemctl errored).
+func CheckServiceCollectError(s *model.ServiceStatus) []model.CheckResult {
+	if s.Error == "" {
+		return nil
+	}
+	return []model.CheckResult{{
+		Field:  "service." + s.Module + ".collect_error",
+		Value:  s.Error,
+		Status: model.StatusNotice,
+	}}
 }
 
 // CheckReplication produces check results for a ReplicationReport so that
@@ -190,14 +241,23 @@ func CheckReplication(rep *model.ReplicationReport) []model.CheckResult {
 
 func strconvI(i int) string { return strconv.Itoa(i) }
 
-// Summarize counts OK and WARN from a list of check results.
+// Summarize counts OK / Warn / Unknown from a list of check results.
+// Total includes OK + Warn + Unknown; Notice items are excluded from every bucket.
 func Summarize(results []model.CheckResult) model.CheckSummary {
-	s := model.CheckSummary{Total: len(results)}
+	var s model.CheckSummary
 	for _, r := range results {
-		if r.Status == model.StatusOK {
+		switch r.Status {
+		case model.StatusOK:
 			s.OK++
-		} else {
+			s.Total++
+		case model.StatusWarn:
 			s.Warn++
+			s.Total++
+		case model.StatusUnknown:
+			s.Unknown++
+			s.Total++
+		case model.StatusNotice:
+			// excluded
 		}
 	}
 	return s

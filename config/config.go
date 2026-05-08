@@ -70,6 +70,15 @@ type Thresholds struct {
 	// vhosts whose queues are exempt from the "0 consumers" alert (queue backlog
 	// alert still applies). env-set value fully replaces the default.
 	RabbitMQNoConsumerVHostBlacklist []string
+
+	// Notice-level thresholds: trigger HTML coloring but NOT email alerts and NOT
+	// Summary.Warn. Migrated from inline template constants.
+	ESHeapPercent             int // > → Notice
+	ESRAMPercent              int // > → Notice
+	ESUnassignedShards        int // > → Notice
+	RedisCeleryQueue          int // > → Notice
+	RedisMonitorQueue         int // > → Notice
+	ServiceContainersExited   int // > → Notice
 }
 
 // Config is the top-level configuration.
@@ -277,6 +286,30 @@ func Load(outputDir string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	esHeap, err := parseIntEnv("INSPECT_ES_HEAP_THRESHOLD", 85)
+	if err != nil {
+		return nil, err
+	}
+	esRAM, err := parseIntEnv("INSPECT_ES_RAM_THRESHOLD", 95)
+	if err != nil {
+		return nil, err
+	}
+	esUnassigned, err := parseIntEnv("INSPECT_ES_UNASSIGNED_SHARDS_THRESHOLD", 0)
+	if err != nil {
+		return nil, err
+	}
+	redisCelery, err := parseIntEnv("INSPECT_REDIS_CELERY_QUEUE_THRESHOLD", 1000)
+	if err != nil {
+		return nil, err
+	}
+	redisMonitor, err := parseIntEnv("INSPECT_REDIS_MONITOR_QUEUE_THRESHOLD", 10000)
+	if err != nil {
+		return nil, err
+	}
+	dockerExited, err := parseIntEnv("INSPECT_DOCKER_EXITED_THRESHOLD", 0)
+	if err != nil {
+		return nil, err
+	}
 	c.Thresholds = Thresholds{
 		CPUUsage:                         cpu,
 		DiskUsage:                        disk,
@@ -287,6 +320,12 @@ func Load(outputDir string) (*Config, error) {
 		RedisReplIOSec:                   redisIO,
 		RabbitMQQueueBacklog:             rmqBacklog,
 		RabbitMQNoConsumerVHostBlacklist: parseVHostBlacklist(os.Getenv("INSPECT_RABBITMQ_NO_CONSUMER_VHOST_BLACKLIST"), []string{"bk_bknodeman"}),
+		ESHeapPercent:                    esHeap,
+		ESRAMPercent:                     esRAM,
+		ESUnassignedShards:               esUnassigned,
+		RedisCeleryQueue:                 redisCelery,
+		RedisMonitorQueue:                redisMonitor,
+		ServiceContainersExited:          dockerExited,
 	}
 
 	// SSH settings
