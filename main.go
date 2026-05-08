@@ -16,9 +16,18 @@ import (
 	sshclient "weops-inspect/ssh"
 )
 
+var version = "dev"
+
 func main() {
 	outputDir := flag.String("o", ".", "输出目录")
+	showVersionShort := flag.Bool("v", false, "打印版本号并退出")
+	showVersionLong := flag.Bool("version", false, "打印版本号并退出")
 	flag.Parse()
+
+	if *showVersionShort || *showVersionLong {
+		fmt.Println(version)
+		return
+	}
 
 	// Load config from BK_* environment variables
 	cfg, err := config.Load(*outputDir)
