@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,14 +17,21 @@ import (
 // Client wraps SSH connection parameters.
 type Client struct {
 	User           string
+	Port           int
+	UseSudo        bool
 	ConnectTimeout time.Duration
 	ExecTimeout    time.Duration
 	config         *ssh.ClientConfig
 }
 
-// New creates a new SSH client with the given user and timeouts.
-func New(user string, connectTimeout, execTimeout time.Duration) (*Client, error) {
-	authMethods, err := buildAuthMethods()
+// New creates a new SSH client.
+//
+// keyPath, when non-empty, adds the file as an authentication source in
+// addition to the default agent / ~/.ssh/id_* lookup.
+// If useSudo is true, every Run command is prefixed with "sudo "; this only
+// works against hosts configured for NOPASSWD sudo.
+func New(user string, port int, keyPath string, useSudo bool, connectTimeout, execTimeout time.Duration) (*Client, error) {
+	authMethods, err := buildAuthMethods(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure SSH auth: %w", err)
 	}
@@ -35,8 +43,14 @@ func New(user string, connectTimeout, execTimeout time.Duration) (*Client, error
 		Timeout:         connectTimeout,
 	}
 
+	if port == 0 {
+		port = 22
+	}
+
 	return &Client{
 		User:           user,
+		Port:           port,
+		UseSudo:        useSudo,
 		ConnectTimeout: connectTimeout,
 		ExecTimeout:    execTimeout,
 		config:         config,
@@ -54,7 +68,7 @@ func (c *Client) Run(host, command string) (string, error) {
 func (c *Client) RunContext(ctx context.Context, host, command string) (string, error) {
 	addr := host
 	if !strings.Contains(addr, ":") {
-		addr = addr + ":22"
+		addr = addr + ":" + strconv.Itoa(c.Port)
 	}
 
 	conn, err := ssh.Dial("tcp", addr, c.config)
@@ -68,6 +82,15 @@ func (c *Client) RunContext(ctx context.Context, host, command string) (string, 
 		return "", fmt.Errorf("ssh session %s: %w", host, err)
 	}
 	defer session.Close()
+
+	if c.UseSudo {
+		// NOPASSWD-only: prefix the entire command with "sudo bash -c '...'".
+		// We wrap with bash -c so the embedded ; / | / multi-line script still
+		// runs under one sudo invocation, and we escape single quotes inside
+		// the original command.
+		escaped := strings.ReplaceAll(command, "'", `'\''`)
+		command = "sudo bash -c '" + escaped + "'"
+	}
 
 	type result struct {
 		output []byte
@@ -92,9 +115,22 @@ func (c *Client) RunContext(ctx context.Context, host, command string) (string, 
 	}
 }
 
-// buildAuthMethods tries SSH agent first, then default key files.
-func buildAuthMethods() ([]ssh.AuthMethod, error) {
+// buildAuthMethods tries the explicit key path (if any), SSH agent, then default key files.
+func buildAuthMethods(keyPath string) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
+
+	// Explicit key file from env
+	if keyPath != "" {
+		key, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("read SSH key %s: %w", keyPath, err)
+		}
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("parse SSH key %s: %w", keyPath, err)
+		}
+		methods = append(methods, ssh.PublicKeys(signer))
+	}
 
 	// Try SSH agent
 	if sock := os.Getenv("SSH_AUTH_SOCK"); sock != "" {
@@ -110,8 +146,8 @@ func buildAuthMethods() ([]ssh.AuthMethod, error) {
 	if err == nil {
 		keyFiles := []string{"id_rsa", "id_ecdsa", "id_ed25519"}
 		for _, name := range keyFiles {
-			keyPath := filepath.Join(home, ".ssh", name)
-			key, err := os.ReadFile(keyPath)
+			p := filepath.Join(home, ".ssh", name)
+			key, err := os.ReadFile(p)
 			if err != nil {
 				continue
 			}

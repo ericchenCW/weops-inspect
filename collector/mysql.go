@@ -10,38 +10,49 @@ import (
 	"weops-inspect/model"
 )
 
-// CollectMySQL collects MySQL configuration and replication status.
+// CollectMySQL iterates over each MySQL IP in cfg.MySQLIPs and collects
+// per-node configuration / replication info, returning a single MySQLCluster
+// containing all nodes.
 func CollectMySQL(cfg *config.Config) []model.MySQLCluster {
-	if cfg.MySQLIP == "" {
+	if len(cfg.MySQLIPs) == 0 {
 		return nil
 	}
 	if _, err := exec.LookPath("mysql"); err != nil {
 		return []model.MySQLCluster{{Error: "mysql CLI not available"}}
 	}
 
-	instance := fmt.Sprintf("%s:%s", cfg.MySQLIP, cfg.MySQLPort)
-	cluster := model.MySQLCluster{Instance: instance}
+	cluster := model.MySQLCluster{
+		Instance: fmt.Sprintf("mysql:%s", cfg.MySQLPort),
+	}
 
-	// Build common mysql args
+	for _, ip := range cfg.MySQLIPs {
+		cluster.Nodes = append(cluster.Nodes, collectMySQLNode(ip, cfg.MySQLPort, cfg.Creds))
+	}
+	return []model.MySQLCluster{cluster}
+}
+
+func collectMySQLNode(ip, port string, creds config.Credentials) model.MySQLNode {
 	baseArgs := []string{
-		fmt.Sprintf("-u%s", cfg.Creds.MySQLUser),
-		fmt.Sprintf("-p%s", cfg.Creds.MySQLPassword),
-		fmt.Sprintf("-h%s", cfg.MySQLIP),
-		fmt.Sprintf("-P%s", cfg.MySQLPort),
+		fmt.Sprintf("-u%s", creds.MySQLUser),
+		fmt.Sprintf("-p%s", creds.MySQLPassword),
+		fmt.Sprintf("-h%s", ip),
+		fmt.Sprintf("-P%s", port),
 		"-N", "-s",
 	}
 
-	node := model.MySQLNode{IP: cfg.MySQLIP}
+	node := model.MySQLNode{IP: ip}
 
-	// Version
+	// Probe with version; if this fails, treat the node as unreachable.
 	node.Version = mysqlQuery(baseArgs, "SELECT @@VERSION")
+	if node.Version == "" {
+		node.Error = "connect/query failed"
+		return node
+	}
 
-	// Variables
 	node.MaxConnections = mysqlQueryInt(baseArgs, "SELECT @@max_connections")
 	node.ExpireLogsDays = mysqlQueryInt(baseArgs, "SELECT @@expire_logs_days")
 	node.MaxAllowedPacket = int64(mysqlQueryInt(baseArgs, "SELECT @@max_allowed_packet"))
-	node.SlowQueryLog = mysqlQuery(baseArgs, "SELECT @@slow_query_log")
-	if node.SlowQueryLog == "1" {
+	if mysqlQuery(baseArgs, "SELECT @@slow_query_log") == "1" {
 		node.SlowQueryLog = "ON"
 	} else {
 		node.SlowQueryLog = "OFF"
@@ -56,7 +67,7 @@ func CollectMySQL(cfg *config.Config) []model.MySQLCluster {
 	node.TableOpenCache = mysqlQueryInt(baseArgs, "SELECT @@table_open_cache")
 	node.WaitTimeout = mysqlQueryInt(baseArgs, "SELECT @@wait_timeout")
 
-	// Replication status
+	// Replication status — coarse role detection via SHOW SLAVE STATUS\G.
 	slaveOut := mysqlQuery(baseArgs, "SHOW SLAVE STATUS\\G")
 	if strings.Contains(slaveOut, "Slave_IO_Running") {
 		node.Role = "slave"
@@ -73,14 +84,11 @@ func CollectMySQL(cfg *config.Config) []model.MySQLCluster {
 		node.Role = "master"
 	}
 
-	// Binlog count
-	binlogOut := mysqlQuery(baseArgs, "SHOW MASTER LOGS")
-	if binlogOut != "" {
+	if binlogOut := mysqlQuery(baseArgs, "SHOW MASTER LOGS"); binlogOut != "" {
 		node.BinlogCount = len(strings.Split(strings.TrimSpace(binlogOut), "\n"))
 	}
 
-	cluster.Nodes = append(cluster.Nodes, node)
-	return []model.MySQLCluster{cluster}
+	return node
 }
 
 func mysqlQuery(baseArgs []string, query string) string {

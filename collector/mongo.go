@@ -3,34 +3,51 @@ package collector
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os/exec"
+	"strings"
 
 	"weops-inspect/config"
 	"weops-inspect/model"
 )
 
-// CollectMongo collects MongoDB replica set status.
+// CollectMongo connects to the MongoDB replica set as a single logical instance
+// (URI lists every member + replicaSet=<name>) and reports each member's
+// state via rs.status().
 func CollectMongo(cfg *config.Config) []model.MongoCluster {
-	if cfg.MongoDBIP == "" {
+	if len(cfg.MongoDBIPs) == 0 {
 		return nil
 	}
-	if _, err := exec.LookPath("mongo"); err != nil {
-		return []model.MongoCluster{{Error: "mongo CLI not available"}}
+	mongoBin, err := lookupMongoBinary()
+	if err != nil {
+		return []model.MongoCluster{{Error: err.Error()}}
 	}
 
-	instance := fmt.Sprintf("%s:%s", cfg.MongoDBIP, cfg.MongoDBPort)
+	// hostList: ip1:port,ip2:port,...
+	hostParts := make([]string, 0, len(cfg.MongoDBIPs))
+	for _, ip := range cfg.MongoDBIPs {
+		hostParts = append(hostParts, ip+":"+cfg.MongoDBPort)
+	}
+	hostList := strings.Join(hostParts, ",")
+	instance := hostList + "/?replicaSet=" + cfg.MongoRSName
+
 	cluster := model.MongoCluster{Instance: instance}
 
+	// mongo client URI with credentials and replicaSet.
+	uri := fmt.Sprintf("mongodb://%s:%s@%s/?replicaSet=%s&authSource=admin",
+		url.QueryEscape(cfg.Creds.MongoDBUser),
+		url.QueryEscape(cfg.Creds.MongoDBPassword),
+		hostList,
+		url.QueryEscape(cfg.MongoRSName),
+	)
+
 	args := []string{
-		"-u", cfg.Creds.MongoDBUser,
-		"-p", cfg.Creds.MongoDBPassword,
-		"--host", cfg.MongoDBIP,
-		"--port", cfg.MongoDBPort,
+		uri,
 		"--quiet",
 		"--eval", "print(JSON.stringify(rs.status()))",
 	}
 
-	out, err := exec.Command("mongo", args...).Output()
+	out, err := exec.Command(mongoBin, args...).Output()
 	if err != nil {
 		cluster.Error = fmt.Sprintf("mongo error: %v", err)
 		return []model.MongoCluster{cluster}
@@ -64,4 +81,16 @@ func CollectMongo(cfg *config.Config) []model.MongoCluster {
 	}
 
 	return []model.MongoCluster{cluster}
+}
+
+// lookupMongoBinary picks `mongosh` if available (modern releases), falling
+// back to `mongo` (legacy shell). Both accept the same connection-string and
+// --eval flags used here.
+func lookupMongoBinary() (string, error) {
+	for _, bin := range []string{"mongosh", "mongo"} {
+		if _, err := exec.LookPath(bin); err == nil {
+			return bin, nil
+		}
+	}
+	return "", fmt.Errorf("mongo CLI not available (neither mongosh nor mongo on PATH)")
 }
