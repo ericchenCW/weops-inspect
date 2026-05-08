@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net"
-	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -134,20 +133,11 @@ func Classify(err error) ErrorClass {
 // dsnPwdRe 匹配 user:pass@ 形式 DSN/URI 中的密码段。
 var dsnPwdRe = regexp.MustCompile(`(://)?([^:/\s@]+):([^@/\s]+)@`)
 
-// RedactDSN 把字符串里 user:pass@ 的密码替换成 ***。同时处理 mongodb://user:pwd@host
-// 这种带 scheme 的形式。失败时原样返回。
+// RedactDSN 把字符串里 user:pass@ 形式的密码替换成 ***。
+// 同时覆盖 mongodb://user:pass@host 与 user:pass@tcp(host)/ 两类常见形式。
 func RedactDSN(s string) string {
 	if s == "" {
 		return s
-	}
-	// 优先按 URL 解析(精准命中 mongodb:// / mysql:// 等)。
-	if strings.Contains(s, "://") {
-		if u, err := url.Parse(s); err == nil && u.User != nil {
-			if _, hasPwd := u.User.Password(); hasPwd {
-				u.User = url.UserPassword(u.User.Username(), "***")
-				return u.String()
-			}
-		}
 	}
 	return dsnPwdRe.ReplaceAllString(s, "${1}${2}:***@")
 }

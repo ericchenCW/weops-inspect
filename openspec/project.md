@@ -18,8 +18,9 @@
 - 模板渲染：Go `html/template` (`render/templates/`)
 - 配置入口：环境变量（`BK_*` 系列）+ `-o` 命令行参数
 - 外部依赖（运行环境需提供）：
-  - `mysql`、`redis-cli`、`mongo`、`curl` CLI
+  - `curl`（用于 RabbitMQ 管理 API 与 ES HTTP 接口）
   - 目标主机的 `systemctl / ps / df / free / dmidecode / ss` 等基础工具
+  - 注：MySQL / Redis / MongoDB 采集已改用 Go 原生驱动，无需在巡检机预装相应 CLI
 
 ## 目录结构与职责
 
@@ -46,9 +47,9 @@ weops-inspect/
 |------|------|---------|---------|
 | 主机巡检 | SSH 批量 shell | CPU/内存/磁盘/inode/负载/进程数/ulimit/网络/SELinux/防火墙/NTP/内核/硬件 | CPU≥75%, 磁盘≥75%, ulimit<102400, 运行天数≥365 等 |
 | 蓝鲸服务巡检 | SSH | `paas/cmdb/job/gse/iam/usermgr/nodeman/appo/appt` 各子模块的 systemctl + healthz + worker 数 | ActiveState=active, healthz=ok |
-| MySQL | 本地 mysql CLI | 版本、变量(max_conn/innodb/timeout)、主从角色、binlog 数 | 主从 IO/SQL 状态 |
-| Redis | 本地 redis-cli | INFO、celery/monitor 队列长度 | — |
-| MongoDB | 本地 mongo CLI | `rs.status()` 副本集成员健康 | — |
+| MySQL | go-sql-driver/mysql | 版本、变量(max_conn/innodb/timeout)、主从角色、binlog 数 | 主从 IO/SQL 状态 |
+| Redis | redis/go-redis/v9 | INFO、celery/monitor 队列长度;Sentinel 显式逐节点探测 | — |
+| MongoDB | mongo-driver | `replSetGetStatus` 副本集成员健康 | — |
 | Elasticsearch | curl HTTP | 集群 health + `_cat/nodes` | status=green/yellow/red |
 | RabbitMQ | curl 管理 API | nodes/connections/channels/queues | mem_alarm、消息堆积、无消费者 |
 

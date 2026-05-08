@@ -76,14 +76,15 @@ func main() {
 
 	// Phase 3: Collect open source components
 	fmt.Fprintf(os.Stderr, "[3/3] 采集开源组件状态...\n")
-	report.ES = collector.CollectES(cfg)
-	report.MySQL = collector.CollectMySQL(context.Background(), cfg)
-	report.RedisStandalone = collector.CollectRedisStandalone(cfg)
-	report.RedisSentinel = collector.CollectRedisSentinel(cfg)
+	ctx := context.Background()
+	report.ES = collector.CollectES(ctx, cfg)
+	report.MySQL = collector.CollectMySQL(ctx, cfg)
+	report.RedisStandalone = collector.CollectRedisStandalone(ctx, cfg)
+	report.RedisSentinel = collector.CollectRedisSentinel(ctx, cfg)
 	collector.CrossCheckSentinelMaster(report.RedisSentinel, cfg.RedisMasterIPs)
-	report.MongoDB = collector.CollectMongo(cfg)
-	report.RabbitMQ = collector.CollectRabbitMQ(cfg)
-	report.Replication = collector.CollectReplication(cfg)
+	report.MongoDB = collector.CollectMongo(ctx, cfg)
+	report.RabbitMQ = collector.CollectRabbitMQ(ctx, cfg)
+	report.Replication = collector.CollectReplication(ctx, cfg)
 	if deps := collector.CollectBKMonitorV3Deps(cfg); deps != nil {
 		report.BKMonitorV3 = &model.BKMonitorV3Section{Dependencies: deps}
 	}
