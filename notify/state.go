@@ -15,11 +15,21 @@ const (
 	StatusOK    = "ok"
 )
 
+// PendingItem records how many consecutive runs an alert has been observed
+// before it is allowed to enter the decision matrix. FirstSeen anchors the
+// 24h GC sweep that prunes stale entries even when keys never reappear.
+type PendingItem struct {
+	Count     int       `json:"count"`
+	FirstSeen time.Time `json:"first_seen"`
+}
+
 // State is persisted between runs to drive cooldown and recovery decisions.
 type State struct {
-	LastSentAt    time.Time `json:"last_sent_at"`
-	LastSignature string    `json:"last_signature"`
-	LastStatus    string    `json:"last_status"`
+	LastSentAt     time.Time              `json:"last_sent_at"`
+	LastSignature  string                 `json:"last_signature"`
+	LastStatus     string                 `json:"last_status"`
+	Pending        map[string]PendingItem `json:"pending,omitempty"`
+	RecoveryStreak int                    `json:"recovery_streak,omitempty"`
 }
 
 // LoadState reads the state file. A missing file returns a zero-value state
@@ -31,12 +41,15 @@ func LoadState(path string) *State {
 		if !os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "notify: 读取状态文件失败 (%v)，按冷启动处理\n", err)
 		}
-		return &State{}
+		return &State{Pending: map[string]PendingItem{}}
 	}
 	var s State
 	if err := json.Unmarshal(data, &s); err != nil {
 		fmt.Fprintf(os.Stderr, "notify: 状态文件解析失败 (%v)，按冷启动处理\n", err)
-		return &State{}
+		return &State{Pending: map[string]PendingItem{}}
+	}
+	if s.Pending == nil {
+		s.Pending = map[string]PendingItem{}
 	}
 	return &s
 }

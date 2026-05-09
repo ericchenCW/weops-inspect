@@ -147,6 +147,9 @@ Notice 阈值速查（仅以下 6 项触发 Notice，env 覆盖）：
   "trigger": {
     "min_interval_minutes": 120,
     "send_recovery": true
+  },
+  "persistence": {
+    "consecutive_runs": 2
   }
 }
 ```
@@ -158,6 +161,9 @@ Notice 阈值速查（仅以下 6 项触发 Notice，env 覆盖）：
 - `trigger.min_interval_minutes`：同一组告警的去重窗口（默认 120）。窗口内同签名
   告警会被抑制；告警集合发生变化（新增/消失某项）时立即重发，不受窗口限制。
 - `trigger.send_recovery`：上次发过告警邮件、本次恢复正常时是否发送恢复通知。
+- `persistence.consecutive_runs` (N)：告警进入决策前需要连续出现的次数，默认 2。
+  设置为 1 关闭本特性。同时作用于恢复路径——上次状态为 alert 时，需要连续 N 次
+  巡检 raw 告警为空才会发恢复邮件。详见下文"持续确认"小节。
 
 **安全提醒**：配置文件含明文密码，必须收紧权限：
 
@@ -183,6 +189,48 @@ chmod 600 ~/.config/weops/config.json
 误抑制。
 
 通知子系统的任何错误都只在 stderr 输出，**不影响巡检退出码**——与 cron 共存友好。
+
+### 持续确认（避免抖动告警）
+
+阈值贴边的指标（CPU 95% 上下、Redis 内存逼近上限、单队列瞬时 active=0 等）会在
+连续两次巡检间反复进出告警集合。`persistence.consecutive_runs`（N）让这类抖动
+不产生邮件：只有同一 `(Host, Field)` 在**连续 N 次**巡检中都告警，才视为有效，
+进入签名/冷却决策；恢复同理，连续 N 次 raw 告警为空才发"全部正常"。
+
+cron 间隔 × N → 检测延迟（最佳～最坏）：
+
+| cron     | N | 首次告警延迟 | recovery 延迟 |
+|----------|---|--------------|---------------|
+| `*/5`    | 1 | 0 ~ 5 min    | 0 ~ 5 min     |
+| `*/5`    | 2 | 5 ~ 10 min   | 5 ~ 10 min    |
+| `*/5`    | 3 | 10 ~ 15 min  | 10 ~ 15 min   |
+| `*/1`    | 3 | 2 ~ 3 min    | 2 ~ 3 min     |
+
+注意事项：
+
+- **首次部署**：所有现存告警从 `pending(1)` 起步，第一次巡检不会发告警邮件，
+  第二次（N=2）才发。这是设计预期。
+- **报告与邮件一致**：未通过持续确认的告警项会被降级为 `notice` 状态，从
+  Summary、邮件正文、HTML 报告 warn 计数中剔除——避免"报告里看到 5 个 warn
+  却没收到邮件"的语义割裂。
+- **长期 pending 阻塞 recovery**：如果某个噪声指标长期处于 pending 累积态，
+  raw 告警永远非空，主告警的 recovery 邮件永远发不出去。这是设计意图——系统
+  不"完全干净"就不宣布全员恢复。运维若发现某指标长期在边界抖动，应主动调阈值
+  或排查根因。
+- **`immediate_fields` 立即告警白名单**：暂未实现。当前所有告警一视同仁走 N 次
+  确认；进程缺失、端口不通等灾难类故障也会延迟 5~10 min 才告警（N=2, `*/5`）。
+
+### 单实例运行锁
+
+工具启动时获取 `~/.config/weops/inspect.lock`（或 `WEOPS_CONFIG` 同目录）的
+`flock`。当一次运行尚未结束、新一次 cron 触发时，新实例**立即退出且退出码为 0**
+（保护性跳过，不触发 cron 系统邮件），并在 stderr 打印
+`weops-inspect: another instance is running, exiting`。
+
+锁由内核管理，进程 SIGKILL/崩溃自动释放，无需手工清理。
+
+**注意**：锁文件不要放在 NFS / overlay 等共享文件系统上，flock 在这些 FS 上
+行为不稳定。默认路径在用户 home 下的本地盘，无需调整。
 
 ## Crontab 周期巡检部署
 
