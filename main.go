@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"weops-inspect/checker"
 	"weops-inspect/collector"
 	"weops-inspect/config"
+	"weops-inspect/lock"
 	"weops-inspect/model"
 	"weops-inspect/notify"
 	"weops-inspect/output"
@@ -38,6 +41,24 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintf(os.Stderr, "配置校验失败: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Single-instance guard. Lock lives next to notify state.json so it
+	// shares the user-private config dir. If another instance holds the
+	// lock, exit code 0 — overlapping cron triggers are protective skips,
+	// not failures (a non-zero exit would make cron mail the operator).
+	if notifyPath, err := notify.ConfigPath(); err == nil {
+		lockPath := filepath.Join(filepath.Dir(notifyPath), "inspect.lock")
+		release, err := lock.Acquire(lockPath)
+		switch {
+		case err == nil:
+			defer release()
+		case errors.Is(err, lock.ErrBusy):
+			fmt.Fprintln(os.Stderr, "weops-inspect: another instance is running, exiting")
+			return
+		default:
+			fmt.Fprintf(os.Stderr, "weops-inspect: lock unavailable, continuing without it: %v\n", err)
+		}
 	}
 
 	report := &model.InspectReport{
@@ -116,7 +137,17 @@ func main() {
 	report.Summary = checker.Summarize(allChecks)
 	report.AllChecks = allChecks
 
-	// Output
+	// Optional notify config: when enabled, persistence confirmation runs
+	// BEFORE rendering so the on-disk HTML/JSON match what we notify on.
+	// Pending warns are demoted to Notice (excluded from Summary).
+	notifyCfg, err := notify.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "notify: 配置加载失败: %v\n", err)
+		notifyCfg = nil
+	}
+	prep := notify.Prepare(notifyCfg, report)
+
+	// Output (after persistence demotion so HTML, JSON, and Summary agree)
 	fmt.Fprintf(os.Stderr, "\n生成报告...\n")
 	htmlPath, err := output.Write(report, cfg.OutputDir)
 	if err != nil {
@@ -127,10 +158,5 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\n巡检完成! 共 %d 项检查, %d 正常, %d 告警, %d 未知\n",
 		report.Summary.Total, report.Summary.OK, report.Summary.Warn, report.Summary.Unknown)
 
-	// Optional alert notification (skipped silently when no config or disabled).
-	if notifyCfg, err := notify.Load(); err != nil {
-		fmt.Fprintf(os.Stderr, "notify: 配置加载失败: %v\n", err)
-	} else if notifyCfg != nil {
-		notify.Process(notifyCfg, report, htmlPath)
-	}
+	notify.Dispatch(prep, notifyCfg, report, htmlPath)
 }

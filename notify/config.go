@@ -25,10 +25,18 @@ type TriggerConfig struct {
 	SendRecovery       bool `json:"send_recovery"`
 }
 
+// PersistenceConfig gates alerts behind N consecutive runs of confirmation.
+// ConsecutiveRuns=1 disables the feature entirely (every alert passes through
+// on first sight). Default at load time is 2.
+type PersistenceConfig struct {
+	ConsecutiveRuns int `json:"consecutive_runs"`
+}
+
 // Config is the top-level notification configuration.
 type Config struct {
-	Email   EmailConfig   `json:"email"`
-	Trigger TriggerConfig `json:"trigger"`
+	Email       EmailConfig       `json:"email"`
+	Trigger     TriggerConfig     `json:"trigger"`
+	Persistence PersistenceConfig `json:"persistence"`
 
 	// path is the resolved file path used at load time. Not serialised.
 	path string `json:"-"`
@@ -87,6 +95,12 @@ func Load() (*Config, error) {
 
 	if cfg.Trigger.MinIntervalMinutes <= 0 {
 		cfg.Trigger.MinIntervalMinutes = 120
+	}
+	if cfg.Persistence.ConsecutiveRuns <= 0 {
+		if cfg.Persistence.ConsecutiveRuns < 0 {
+			fmt.Fprintf(os.Stderr, "notify: persistence.consecutive_runs %d 非法，回退默认 2\n", cfg.Persistence.ConsecutiveRuns)
+		}
+		cfg.Persistence.ConsecutiveRuns = 2
 	}
 
 	return &cfg, nil

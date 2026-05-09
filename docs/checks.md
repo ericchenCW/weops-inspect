@@ -223,7 +223,34 @@ Notice 项后续上升为应告警，把它在对应 checker 里改成 `StatusWa
   跨 vhost 新增告警仍会立即触发。升级首次巡检若已有持续告警，会因签名值
   变化触发一次性重发，之后行为收敛。
 
-### 4.3 决策状态机
+### 4.3 持续确认前置层
+
+[notify/persistence.go](../notify/persistence.go) `ApplyPersistence(items, prev.Pending, N, now)`：
+
+```
+   raw warns ────────────► 持续确认 ──── filtered ───► 签名 / Decide
+        │                       │                        │
+        │                       ▼                        ▼
+        │              pending(count=k)            邮件 / state
+        │              k<N: 抑制, 写 pending
+        │              k≥N: 晋升 firing
+        │
+        └─► UpdateRecoveryStreak(prev.streak, prev.status, rawEmpty)
+                rawEmpty + status=alert → +1
+                rawEmpty=false        → 0
+                status≠alert          → 0
+```
+
+- `consecutive_runs` (N)：默认 2，下限 1（=禁用本特性）。
+- `pending` 键 = `host + "|" + field`，使用**原始** Field（未经 RabbitMQ 队列
+  归一化），保证同 vhost 不同队列各自独立累积。
+- 24 小时 GC：FirstSeen 早于 24h 的 pending 项视为冷启动；本轮未出现的键自然丢弃。
+- recovery 端：上次状态为 alert 时，`recovery_streak` 累积"连续 raw 为空"次数；
+  达到 N 次才发恢复邮件，未达视为抑制（last_status 不变）。raw 非空即重置 streak。
+- 报告同步：未通过持续确认的 Warn CheckResult 在 demote 阶段降为 `notice`，
+  Summary 重算，邮件正文与 HTML 报告 warn 计数一致。
+
+### 4.4 决策状态机
 
 [notify/trigger.go](../notify/trigger.go) `Decide(now, prev, warnCount, sig, cooldown)`：
 
@@ -254,7 +281,7 @@ Notice 项后续上升为应告警，把它在对应 checker 里改成 `StatusWa
 
 冷却窗口默认 2 小时（`trigger.min_interval_minutes`）。
 
-### 4.4 邮件正文
+### 4.5 邮件正文
 
 [notify/email.go](../notify/email.go) `BuildAlertBody`：
 
@@ -275,12 +302,21 @@ Summary: 共 152 项检查，142 正常，9 告警，1 未知
 - 明细**仅展示 Warn 项**；Unknown / Notice 不进邮件正文（HTML 报告里仍可见）。
 - HTML 报告作为附件 + 邮件 alternative body 一同发送。
 
-### 4.5 持久化
+### 4.6 持久化
 
 [notify/state.go](../notify/state.go) `~/.config/weops/state.json`：
 
-仅在 SMTP **发送成功**后写入 `last_sent_at / last_signature / last_status`。
-失败保留旧基线，下次按旧状态判定，避免一次抖动让告警长期被误抑制。
+字段：
+- `last_sent_at` / `last_signature` / `last_status`：决策矩阵基线，仅 SMTP **发送
+  成功**后写入。失败保留旧基线，下次按旧状态判定，避免一次抖动让告警长期被
+  误抑制。
+- `pending`（map）：每个 `host|field` 的连续告警次数与首次出现时间。每次巡检
+  按规则更新（即使本次抑制邮件）；发送失败时连同其他字段一起回滚。
+- `recovery_streak`（int）：连续 raw 告警为空的次数，仅在 `last_status=alert`
+  时累积；同样每次巡检按规则更新，发送失败时回滚。
+
+旧版本 state.json（无 `pending` / `recovery_streak`）按"空 map + 0"读入，无需
+迁移。
 
 ---
 
